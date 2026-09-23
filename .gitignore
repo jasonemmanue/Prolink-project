@@ -1,0 +1,39 @@
+# Flutter
+Application/.dart_tool/
+Application/.flutter-plugins
+Application/.flutter-plugins-dependencies
+Application/.packages
+Application/.pub-cache/
+Application/.pub/
+Application/build/
+Application/.idea/
+Application/.vscode/
+Application/android/.gradle/
+Application/android/local.properties
+Application/android/app/build/
+Application/android/build/
+Application/ios/Pods/
+Application/ios/build/
+Application/ios/.symlinks/
+Application/ios/Flutter/App.framework
+Application/ios/Flutter/Flutter.framework
+Application/ios/Flutter/Flutter.podspec
+
+# Next.js
+backoffice/node_modules/
+backoffice/.next/
+backoffice/out/
+backoffice/.env.local
+
+# FastAPI
+Api/.venv/
+Api/__pycache__/
+Api/**/__pycache__/
+Api/*.pyc
+Api/.env
+Api/.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
