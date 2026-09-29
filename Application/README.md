@@ -39,3 +39,22 @@ flutter install                    # installer sur le téléphone connecté
 
 - Android 8+ (arm64/armeabi/x86_64)
 - iOS 13+ (via Codemagic)
+
+## Documentation
+
+- **[SCREENS.md](./SCREENS.md)** — parcours détaillé de chacun des 21 écrans,
+  navigation, données démo utilisées et procédure de build APK.
+- **[CLAUDE.md](./CLAUDE.md)** — conventions internes (theme, l10n,
+  formatXaf, gestion d'état).
+
+## Icône de lancement
+
+L'icône Android est générée à partir de `assets/images/logo.png` via
+`flutter_launcher_icons`. Pour la régénérer après modification du logo :
+
+```bash
+flutter pub get
+dart run flutter_launcher_icons
+```
+
+Adaptive icon : logo sur fond `#1A237E` (primaire ProLink).
