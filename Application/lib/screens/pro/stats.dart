@@ -7,9 +7,16 @@ class ProStatsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Statistiques'), actions: [
-        IconButton(onPressed: () {}, icon: const Icon(Icons.download))
-      ]),
+      appBar: AppBar(
+        title: const Text('Statistiques'),
+        actions: [
+          IconButton(
+            tooltip: 'Exporter en CSV (Premium)',
+            onPressed: () => showInfo(context, 'Export CSV envoyé par e-mail.'),
+            icon: const Icon(Icons.download),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: const [
@@ -18,8 +25,10 @@ class ProStatsScreen extends StatelessWidget {
           _Metric('Revenus 30j', '1 250 000 XAF', '+22%', Icons.payments),
           _Metric('Taux de réponse', '96%', '=', Icons.reply),
           SizedBox(height: 24),
-          Text('Sources de trafic',
-              style: TextStyle(fontWeight: FontWeight.w700)),
+          Text(
+            'Sources de trafic',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
           SizedBox(height: 12),
           _Bar(label: 'Fil d\'actualité', pct: 62),
           _Bar(label: 'Recherche', pct: 21),
@@ -41,11 +50,15 @@ class _Metric extends StatelessWidget {
       child: ListTile(
         leading: Icon(icon, color: AppColors.primary),
         title: Text(title),
-        subtitle: Text(value,
-            style: const TextStyle(
-                fontSize: 18, fontWeight: FontWeight.w800)),
-        trailing:
-            Pill(label: trend, color: AppColors.success, icon: Icons.trending_up),
+        subtitle: Text(
+          value,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+        trailing: Pill(
+          label: trend,
+          color: AppColors.success,
+          icon: Icons.trending_up,
+        ),
       ),
     );
   }
@@ -62,11 +75,15 @@ class _Bar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Expanded(child: Text(label)),
-            Text('${pct.toInt()}%',
-                style: const TextStyle(fontWeight: FontWeight.w700)),
-          ]),
+          Row(
+            children: [
+              Expanded(child: Text(label)),
+              Text(
+                '${pct.toInt()}%',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
           const SizedBox(height: 4),
           ClipRRect(
             borderRadius: BorderRadius.circular(6),

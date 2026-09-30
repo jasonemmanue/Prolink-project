@@ -80,54 +80,55 @@ class MockData {
   static Pro proById(String id) => pros.firstWhere((p) => p.id == id);
 
   static List<Post> feed() => [
-        Post(
-          id: 'po1',
-          author: pros[0],
-          text:
-              'Nouveau : accompagnement complet pour la création d\'une SARL au Cameroun. 3 formules, prix affichés.',
-          images: [
-            'https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=900'
-          ],
-          date: DateTime.now().subtract(const Duration(hours: 2)),
-          likes: 128,
-          comments: 14,
-          sponsored: true,
-        ),
-        Post(
-          id: 'po2',
-          author: pros[1],
-          text:
-              'Retour sur le buffet du mariage Kono ce week-end. Merci aux mariés pour leur confiance !',
-          images: [
-            'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=900',
-            'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=900',
-          ],
-          date: DateTime.now().subtract(const Duration(hours: 8)),
-          likes: 302,
-          comments: 41,
-        ),
-        Post(
-          id: 'po3',
-          author: pros[2],
-          text:
-              'Astuce du jour : 3 erreurs à éviter quand on publie sa première app sur le Play Store.',
-          images: const [],
-          date: DateTime.now().subtract(const Duration(hours: 14)),
-          likes: 91,
-          comments: 22,
-        ),
-        Post(
-          id: 'po4',
-          author: pros[3],
-          text: 'Live demain à 18h : "Le HIIT à la maison — 20 min chrono". Cloche activée = notification.',
-          images: [
-            'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=900'
-          ],
-          date: DateTime.now().subtract(const Duration(hours: 22)),
-          likes: 210,
-          comments: 33,
-        ),
-      ];
+    Post(
+      id: 'po1',
+      author: pros[0],
+      text:
+          'Nouveau : accompagnement complet pour la création d\'une SARL au Cameroun. 3 formules, prix affichés.',
+      images: [
+        'https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=900',
+      ],
+      date: DateTime.now().subtract(const Duration(hours: 2)),
+      likes: 128,
+      comments: 14,
+      sponsored: true,
+    ),
+    Post(
+      id: 'po2',
+      author: pros[1],
+      text:
+          'Retour sur le buffet du mariage Kono ce week-end. Merci aux mariés pour leur confiance !',
+      images: [
+        'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=900',
+        'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=900',
+      ],
+      date: DateTime.now().subtract(const Duration(hours: 8)),
+      likes: 302,
+      comments: 41,
+    ),
+    Post(
+      id: 'po3',
+      author: pros[2],
+      text:
+          'Astuce du jour : 3 erreurs à éviter quand on publie sa première app sur le Play Store.',
+      images: const [],
+      date: DateTime.now().subtract(const Duration(hours: 14)),
+      likes: 91,
+      comments: 22,
+    ),
+    Post(
+      id: 'po4',
+      author: pros[3],
+      text:
+          'Live demain à 18h : "Le HIIT à la maison — 20 min chrono". Cloche activée = notification.',
+      images: [
+        'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=900',
+      ],
+      date: DateTime.now().subtract(const Duration(hours: 22)),
+      likes: 210,
+      comments: 33,
+    ),
+  ];
 
   static List<Service> servicesOf(Pro p) {
     if (p.id == 'p1') {
@@ -218,83 +219,83 @@ class MockData {
   }
 
   static List<LiveEvent> lives() => [
-        LiveEvent(
-          id: 'l1',
-          title: 'Créer sa SARL en 3 étapes',
-          pro: pros[0].name,
-          cover:
-              'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=900',
-          isLive: true,
-          paying: true,
-          priceXaf: 2000,
-          viewers: 143,
-          startAt: DateTime.now(),
-        ),
-        LiveEvent(
-          id: 'l2',
-          title: 'Masterclass cuisine fusion',
-          pro: pros[1].name,
-          cover:
-              'https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?w=900',
-          isLive: false,
-          paying: true,
-          priceXaf: 5000,
-          viewers: 0,
-          startAt: DateTime.now().add(const Duration(days: 1, hours: 4)),
-        ),
-        LiveEvent(
-          id: 'l3',
-          title: 'HIIT à la maison — 20 min',
-          pro: pros[3].name,
-          cover:
-              'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=900',
-          isLive: false,
-          paying: false,
-          priceXaf: 0,
-          viewers: 0,
-          startAt: DateTime.now().add(const Duration(hours: 18)),
-        ),
-      ];
+    LiveEvent(
+      id: 'l1',
+      title: 'Créer sa SARL en 3 étapes',
+      pro: pros[0].name,
+      cover:
+          'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=900',
+      isLive: true,
+      paying: true,
+      priceXaf: 2000,
+      viewers: 143,
+      startAt: DateTime.now(),
+    ),
+    LiveEvent(
+      id: 'l2',
+      title: 'Masterclass cuisine fusion',
+      pro: pros[1].name,
+      cover:
+          'https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?w=900',
+      isLive: false,
+      paying: true,
+      priceXaf: 5000,
+      viewers: 0,
+      startAt: DateTime.now().add(const Duration(days: 1, hours: 4)),
+    ),
+    LiveEvent(
+      id: 'l3',
+      title: 'HIIT à la maison — 20 min',
+      pro: pros[3].name,
+      cover:
+          'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=900',
+      isLive: false,
+      paying: false,
+      priceXaf: 0,
+      viewers: 0,
+      startAt: DateTime.now().add(const Duration(hours: 18)),
+    ),
+  ];
 
   static List<Conversation> conversations() => [
-        Conversation(
-          id: 'c1',
-          peer: pros[0],
-          messages: [
-            ChatMessage(
-              id: 'm1',
-              authorId: 'p1',
-              text: 'Bonjour, comment puis-je vous aider ?',
-              at: DateTime.now().subtract(const Duration(minutes: 45)),
-            ),
-            ChatMessage(
-              id: 'm2',
-              authorId: 'me',
-              fromMe: true,
-              text: "Hello, I need a quote for creating a SARL.",
-              at: DateTime.now().subtract(const Duration(minutes: 40)),
-            ),
-            ChatMessage(
-              id: 'm3',
-              authorId: 'p1',
-              text: 'Je vous envoie le pack complet en pièce jointe.',
-              at: DateTime.now().subtract(const Duration(minutes: 30)),
-            ),
-          ],
+    Conversation(
+      id: 'c1',
+      peer: pros[0],
+      messages: [
+        ChatMessage(
+          id: 'm1',
+          authorId: 'p1',
+          text: 'Bonjour, comment puis-je vous aider ?',
+          at: DateTime.now().subtract(const Duration(minutes: 45)),
         ),
-        Conversation(
-          id: 'c2',
-          peer: pros[2],
-          messages: [
-            ChatMessage(
-              id: 'm4',
-              authorId: 'p3',
-              text: 'Ok, on part sur 4 écrans + auth Firebase ?',
-              at: DateTime.now().subtract(const Duration(hours: 3)),
-            ),
-          ],
+        ChatMessage(
+          id: 'm2',
+          authorId: 'me',
+          fromMe: true,
+          text: "Hello, I need a quote for creating a SARL.",
+          at: DateTime.now().subtract(const Duration(minutes: 40)),
         ),
-      ];
+        ChatMessage(
+          id: 'm3',
+          authorId: 'p1',
+          text: 'Je vous envoie le pack complet en pièce jointe.',
+          at: DateTime.now().subtract(const Duration(minutes: 30)),
+        ),
+      ],
+    ),
+    Conversation(
+      id: 'c2',
+      peer: pros[2],
+      messages: [
+        ChatMessage(
+          id: 'm4',
+          authorId: 'p3',
+          text: 'Ok, on part sur 4 écrans + auth Firebase ?',
+          at: DateTime.now().subtract(const Duration(hours: 3)),
+        ),
+      ],
+    ),
+  ];
 
   static const List<String> categories = [
     'Droit & Justice',
@@ -310,4 +311,125 @@ class MockData {
     'Culture & Arts',
     'Autres services',
   ];
+
+  static List<Order> orders() {
+    final now = DateTime.now();
+    Order o(
+      String id,
+      int pro,
+      int svc,
+      String variant,
+      int amount,
+      OrderStatus st,
+      int ageDays,
+      int dueDays, {
+      String client = 'Emmanuel Sakam',
+    }) => Order(
+      id: id,
+      pro: pros[pro],
+      clientName: client,
+      service: servicesOf(pros[pro])[svc],
+      variant: variant,
+      amountXaf: amount,
+      status: st,
+      createdAt: now.subtract(Duration(days: ageDays)),
+      deadline: now.add(Duration(days: dueDays)),
+    );
+    return [
+      o('PL-10421', 0, 0, 'Standard', 15000, OrderStatus.pending, 0, 2),
+      o(
+        'PL-10418',
+        0,
+        1,
+        'Premium',
+        250000,
+        OrderStatus.inProgress,
+        3,
+        11,
+        client: 'Grace Fotso',
+      ),
+      o('PL-10405', 1, 0, 'Basic', 25000, OrderStatus.delivered, 6, -1),
+      o(
+        'PL-10388',
+        3,
+        0,
+        'Standard',
+        30000,
+        OrderStatus.completed,
+        20,
+        -10,
+        client: 'Paul Ndongo',
+      ),
+      o(
+        'PL-10377',
+        2,
+        0,
+        'Basic',
+        900000,
+        OrderStatus.disputed,
+        28,
+        -3,
+        client: 'Brice Ewane',
+      ),
+    ];
+  }
+
+  static List<AppNotification> notifications() {
+    final now = DateTime.now();
+    return [
+      AppNotification(
+        id: 'n1',
+        kind: 'live',
+        title: 'Me. Aïcha Nkomo est en direct',
+        body: '« Créer sa SARL en 3 étapes » — 143 spectateurs',
+        at: now.subtract(const Duration(minutes: 4)),
+      ),
+      AppNotification(
+        id: 'n2',
+        kind: 'order',
+        title: 'Commande PL-10405 livrée',
+        body: 'Validez la prestation pour libérer le séquestre.',
+        at: now.subtract(const Duration(hours: 1)),
+      ),
+      AppNotification(
+        id: 'n3',
+        kind: 'message',
+        title: 'Nouveau message de Franck Talla',
+        body: 'Ok, on part sur 4 écrans + auth Firebase ?',
+        at: now.subtract(const Duration(hours: 3)),
+      ),
+      AppNotification(
+        id: 'n4',
+        kind: 'payment',
+        title: 'Rechargement réussi',
+        body: '+ 20 000 XAF via MTN Mobile Money',
+        at: now.subtract(const Duration(hours: 9)),
+        read: true,
+      ),
+      AppNotification(
+        id: 'n5',
+        kind: 'follow',
+        title: 'Chef Landry a publié',
+        body: 'Retour sur le buffet du mariage Kono ce week-end.',
+        at: now.subtract(const Duration(days: 1)),
+        read: true,
+      ),
+      AppNotification(
+        id: 'n6',
+        kind: 'review',
+        title: 'Laissez un avis',
+        body: "Comment s'est passé votre coaching HIIT avec Dr. Muna ?",
+        at: now.subtract(const Duration(days: 2)),
+        read: true,
+      ),
+      AppNotification(
+        id: 'n7',
+        kind: 'system',
+        title: 'Sécurité du compte',
+        body: 'Activez la 2FA : obligatoire au-delà de 100 000 XAF/mois.',
+        at: now.subtract(const Duration(days: 3)),
+        read: true,
+      ),
+    ];
+  }
 }

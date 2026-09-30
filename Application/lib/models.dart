@@ -119,3 +119,60 @@ class Conversation {
     required this.messages,
   });
 }
+
+/// Cycle de vie d'une commande escrow (cf. annexe C.1 du cahier des charges).
+enum OrderStatus { pending, inProgress, delivered, completed, disputed }
+
+extension OrderStatusLabel on OrderStatus {
+  String get label => switch (this) {
+    OrderStatus.pending => 'En attente',
+    OrderStatus.inProgress => 'En cours',
+    OrderStatus.delivered => 'Livrée',
+    OrderStatus.completed => 'Terminée',
+    OrderStatus.disputed => 'Litige',
+  };
+}
+
+class Order {
+  final String id;
+  final Pro pro;
+  final String clientName;
+  final Service service;
+  final String variant;
+  final int amountXaf;
+  final OrderStatus status;
+  final DateTime createdAt;
+  final DateTime deadline;
+  const Order({
+    required this.id,
+    required this.pro,
+    required this.clientName,
+    required this.service,
+    required this.variant,
+    required this.amountXaf,
+    required this.status,
+    required this.createdAt,
+    required this.deadline,
+  });
+
+  /// Commission plateforme de 10 % sur les prestations.
+  int get commissionXaf => (amountXaf * 0.10).round();
+  int get netXaf => amountXaf - commissionXaf;
+}
+
+class AppNotification {
+  final String id;
+  final String kind; // order, live, message, follow, payment, review, system
+  final String title;
+  final String body;
+  final DateTime at;
+  final bool read;
+  const AppNotification({
+    required this.id,
+    required this.kind,
+    required this.title,
+    required this.body,
+    required this.at,
+    this.read = false,
+  });
+}

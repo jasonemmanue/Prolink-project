@@ -9,17 +9,22 @@ lib/
 ├── main.dart                # Splash + Provider
 ├── theme.dart               # Palette #1A237E / #00838F / #F57F17
 ├── l10n.dart                # AppLocale + OfflineTranslator (Alibaba-style)
-├── models.dart              # Pro, Post, Service, LiveEvent, Chat
-├── data.dart                # Mock data
-├── widgets/common.dart      # AppLogo, Avatar, Pill, VerifiedBadge…
+├── models.dart              # Pro, Post, Service, LiveEvent, Chat, Order, AppNotification
+├── data.dart                # Mock data (pros, posts, services, lives, commandes, notifications)
+├── widgets/common.dart      # AppLogo, Avatar, Pill, VerifiedBadge, pushScreen, showReportSheet…
 └── screens/
     ├── onboarding.dart
     ├── auth.dart            # Choix du rôle (Client / Pro)
     ├── home_shell.dart      # BottomNav Internaute
     ├── pro_shell.dart       # BottomNav Professionnel
-    ├── live_view.dart       # Visionnage live + chat + pourboire
-    ├── client/              # Feed, Discover, Chat (traduction), Wallet, Profile, Détail service, Order flow
-    └── pro/                 # Dashboard, Publish, Catalog, Orders, Live broadcast, Stats, Finances
+    ├── live_view.dart       # Visionnage live + chat + pourboire + signalement
+    ├── shared/              # Notifications, Recharge / Retrait Mobile Money
+    ├── client/              # Feed, Discover (+filtres), Chat (traduction), Groupes, Wallet, Profile,
+    │                        # Détail service, Order flow, Suivi commande, Litige, Avis, Devis,
+    │                        # Billets & replays, Réglages (notifications, sécurité, aide)
+    └── pro/                 # Dashboard, Publish, Catalog + éditeur, Orders + détail / devis,
+                             # Live (préparation → vérifs → direct → bilan), Stats, Finances,
+                             # KYC, Sponsorisation, Packs, Avis
 ```
 
 ## Traduction automatique du chat
@@ -42,7 +47,8 @@ flutter install                    # installer sur le téléphone connecté
 
 ## Documentation
 
-- **[SCREENS.md](./SCREENS.md)** — parcours détaillé de chacun des 21 écrans,
+- **[SCREENS.md](./SCREENS.md)** — parcours détaillé des 48 écrans (21 d'origine + 27 ajoutés
+  en v1.1), matrice de couverture du cahier des charges,
   navigation, données démo utilisées et procédure de build APK.
 - **[CLAUDE.md](./CLAUDE.md)** — conventions internes (theme, l10n,
   formatXaf, gestion d'état).

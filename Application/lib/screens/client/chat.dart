@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'groups.dart';
 import '../../l10n.dart';
 import '../../models.dart';
 import '../../theme.dart';
@@ -27,34 +28,38 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _msgs.addAll([
       ChatMessage(
-          id: '1',
-          authorId: widget.peer.id,
-          text: 'Bonjour, comment puis-je vous aider ?',
-          at: DateTime.now().subtract(const Duration(minutes: 12))),
+        id: '1',
+        authorId: widget.peer.id,
+        text: 'Bonjour, comment puis-je vous aider ?',
+        at: DateTime.now().subtract(const Duration(minutes: 12)),
+      ),
       ChatMessage(
-          id: '2',
-          authorId: 'me',
-          fromMe: true,
-          text: "Hello, I need a quote for creating a SARL.",
-          at: DateTime.now().subtract(const Duration(minutes: 11))),
+        id: '2',
+        authorId: 'me',
+        fromMe: true,
+        text: "Hello, I need a quote for creating a SARL.",
+        at: DateTime.now().subtract(const Duration(minutes: 11)),
+      ),
       ChatMessage(
-          id: '3',
-          authorId: widget.peer.id,
-          text: "Très bien, le prix est à partir de 250 000 XAF.",
-          at: DateTime.now().subtract(const Duration(minutes: 10))),
+        id: '3',
+        authorId: widget.peer.id,
+        text: "Très bien, le prix est à partir de 250 000 XAF.",
+        at: DateTime.now().subtract(const Duration(minutes: 10)),
+      ),
     ]);
   }
 
   String? _translateFor(ChatMessage m) {
     if (!_autoTranslate) return null;
     // Naïve heuristic: detect if text looks like the other language.
-    final looksEn = RegExp(r'\b(the|is|hello|need|quote|price)\b',
-            caseSensitive: false)
-        .hasMatch(m.text);
+    final looksEn = RegExp(
+      r'\b(the|is|hello|need|quote|price)\b',
+      caseSensitive: false,
+    ).hasMatch(m.text);
     final looksFr = RegExp(
-            r'\b(bonjour|salut|merci|prix|est|besoin|devis|à partir)\b',
-            caseSensitive: false)
-        .hasMatch(m.text);
+      r'\b(bonjour|salut|merci|prix|est|besoin|devis|à partir)\b',
+      caseSensitive: false,
+    ).hasMatch(m.text);
     if (_myLang == 'fr' && looksEn) {
       return OfflineTranslator.translate(m.text, toEn: false);
     }
@@ -68,21 +73,29 @@ class _ChatScreenState extends State<ChatScreen> {
     final t = _ctrl.text.trim();
     if (t.isEmpty) return;
     setState(() {
-      _msgs.add(ChatMessage(
+      _msgs.add(
+        ChatMessage(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
           authorId: 'me',
           fromMe: true,
           text: t,
-          at: DateTime.now()));
+          at: DateTime.now(),
+        ),
+      );
       _ctrl.clear();
     });
     Future.delayed(const Duration(seconds: 1), () {
       if (!mounted) return;
-      setState(() => _msgs.add(ChatMessage(
-          id: 'r${_msgs.length}',
-          authorId: widget.peer.id,
-          text: "D'accord, je vous confirme cela sous 24 h.",
-          at: DateTime.now())));
+      setState(
+        () => _msgs.add(
+          ChatMessage(
+            id: 'r${_msgs.length}',
+            authorId: widget.peer.id,
+            text: "D'accord, je vous confirme cela sous 24 h.",
+            at: DateTime.now(),
+          ),
+        ),
+      );
     });
   }
 
@@ -91,38 +104,47 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        title: Row(children: [
-          Avatar(url: widget.peer.avatar, size: 34),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(widget.peer.name,
-                    style: const TextStyle(fontSize: 14)),
-                const Text('en ligne',
-                    style: TextStyle(
-                        fontSize: 11, color: AppColors.success)),
-              ],
+        title: Row(
+          children: [
+            Avatar(url: widget.peer.avatar, size: 34),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(widget.peer.name, style: const TextStyle(fontSize: 14)),
+                  const Text(
+                    'en ligne',
+                    style: TextStyle(fontSize: 11, color: AppColors.success),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ]),
+          ],
+        ),
         actions: [
           IconButton(
-              onPressed: () {},
-              icon: const Icon(Icons.videocam_outlined)),
+            onPressed: () =>
+                showInfo(context, 'Appel vidéo avec ${widget.peer.name}…'),
+            icon: const Icon(Icons.videocam_outlined),
+          ),
           IconButton(
-              onPressed: () {}, icon: const Icon(Icons.call_outlined)),
+            onPressed: () =>
+                showInfo(context, 'Appel audio avec ${widget.peer.name}…'),
+            icon: const Icon(Icons.call_outlined),
+          ),
           PopupMenuButton(
             itemBuilder: (_) => const [
               PopupMenuItem(
-                  value: 'translate',
-                  child: ListTile(
-                      leading: Icon(Icons.translate),
-                      title: Text('Réglages de traduction'))),
+                value: 'translate',
+                child: ListTile(
+                  leading: Icon(Icons.translate),
+                  title: Text('Réglages de traduction'),
+                ),
+              ),
             ],
-          )
+          ),
         ],
       ),
       body: Column(
@@ -156,11 +178,12 @@ class _TranslateBanner extends StatelessWidget {
   final String lang;
   final ValueChanged<bool> onToggle;
   final ValueChanged<String> onLangChange;
-  const _TranslateBanner(
-      {required this.enabled,
-      required this.lang,
-      required this.onToggle,
-      required this.onLangChange});
+  const _TranslateBanner({
+    required this.enabled,
+    required this.lang,
+    required this.onToggle,
+    required this.onLangChange,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -172,27 +195,28 @@ class _TranslateBanner extends StatelessWidget {
         border: Border.all(color: AppColors.secondary.withOpacity(0.3)),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(children: [
-        const Icon(Icons.translate, color: AppColors.secondary, size: 18),
-        const SizedBox(width: 8),
-        const Expanded(
-          child: Text(
-            'Traduction automatique du chat',
-            style:
-                TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      child: Row(
+        children: [
+          const Icon(Icons.translate, color: AppColors.secondary, size: 18),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              'Traduction automatique du chat',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
           ),
-        ),
-        DropdownButton<String>(
-          value: lang,
-          underline: const SizedBox.shrink(),
-          items: const [
-            DropdownMenuItem(value: 'fr', child: Text('FR')),
-            DropdownMenuItem(value: 'en', child: Text('EN')),
-          ],
-          onChanged: (v) => v == null ? null : onLangChange(v),
-        ),
-        Switch(value: enabled, onChanged: onToggle),
-      ]),
+          DropdownButton<String>(
+            value: lang,
+            underline: const SizedBox.shrink(),
+            items: const [
+              DropdownMenuItem(value: 'fr', child: Text('FR')),
+              DropdownMenuItem(value: 'en', child: Text('EN')),
+            ],
+            onChanged: (v) => v == null ? null : onLangChange(v),
+          ),
+          Switch(value: enabled, onChanged: onToggle),
+        ],
+      ),
     );
   }
 }
@@ -201,8 +225,11 @@ class _Bubble extends StatefulWidget {
   final ChatMessage m;
   final String? translated;
   final String peerAvatar;
-  const _Bubble(
-      {required this.m, required this.translated, required this.peerAvatar});
+  const _Bubble({
+    required this.m,
+    required this.translated,
+    required this.peerAvatar,
+  });
   @override
   State<_Bubble> createState() => _BubbleState();
 }
@@ -220,8 +247,7 @@ class _BubbleState extends State<_Bubble> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
-        mainAxisAlignment:
-            me ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: me ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!me) ...[
@@ -230,12 +256,15 @@ class _BubbleState extends State<_Bubble> {
           ],
           Flexible(
             child: Column(
-              crossAxisAlignment:
-                  me ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              crossAxisAlignment: me
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: color,
                     borderRadius: BorderRadius.only(
@@ -248,53 +277,67 @@ class _BubbleState extends State<_Bubble> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(display,
-                          style: TextStyle(color: textColor, height: 1.3)),
+                      Text(
+                        display,
+                        style: TextStyle(color: textColor, height: 1.3),
+                      ),
                       if (widget.translated != null) ...[
                         const SizedBox(height: 4),
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.translate,
-                                size: 12,
-                                color: (me ? Colors.white : AppColors.secondary)
-                                    .withOpacity(0.8)),
+                            Icon(
+                              Icons.translate,
+                              size: 12,
+                              color: (me ? Colors.white : AppColors.secondary)
+                                  .withOpacity(0.8),
+                            ),
                             const SizedBox(width: 3),
                             Text(
                               _showOriginal
                                   ? 'Original affiché'
                                   : 'Traduit automatiquement',
                               style: TextStyle(
-                                  fontSize: 10,
-                                  color: (me
-                                          ? Colors.white
-                                          : AppColors.textSecondary)
-                                      .withOpacity(0.8)),
+                                fontSize: 10,
+                                color:
+                                    (me
+                                            ? Colors.white
+                                            : AppColors.textSecondary)
+                                        .withOpacity(0.8),
+                              ),
                             ),
                             const SizedBox(width: 6),
                             InkWell(
                               onTap: () => setState(
-                                  () => _showOriginal = !_showOriginal),
+                                () => _showOriginal = !_showOriginal,
+                              ),
                               child: Text(
-                                _showOriginal ? 'Voir traduction' : "Voir l'original",
+                                _showOriginal
+                                    ? 'Voir traduction'
+                                    : "Voir l'original",
                                 style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: me
-                                        ? Colors.white
-                                        : AppColors.secondary),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: me
+                                      ? Colors.white
+                                      : AppColors.secondary,
+                                ),
                               ),
                             ),
                           ],
                         ),
-                      ]
+                      ],
                     ],
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(_hhmm(widget.m.at),
-                    style: TextStyle(
-                        fontSize: 10, color: AppColors.textSecondary)),
+                Text(
+                  _hhmm(widget.m.at),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
               ],
             ),
           ),
@@ -320,30 +363,43 @@ class _Composer extends StatelessWidget {
           color: Theme.of(context).scaffoldBackgroundColor,
           border: Border(top: BorderSide(color: AppColors.divider)),
         ),
-        child: Row(children: [
-          IconButton(
-              onPressed: () {}, icon: const Icon(Icons.attach_file)),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              minLines: 1,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                hintText: 'Écrivez un message… (FR/EN, traduction auto)',
-                filled: false,
-                border: InputBorder.none,
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: () => showAttachmentSheet(context),
+              icon: const Icon(Icons.attach_file),
+            ),
+            Expanded(
+              child: TextField(
+                controller: controller,
+                minLines: 1,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  hintText: 'Écrivez un message… (FR/EN, traduction auto)',
+                  filled: false,
+                  border: InputBorder.none,
+                ),
               ),
             ),
-          ),
-          IconButton(onPressed: () {}, icon: const Icon(Icons.mic_none)),
-          Container(
-            decoration: const BoxDecoration(
-                color: AppColors.primary, shape: BoxShape.circle),
-            child: IconButton(
+            IconButton(
+              onPressed: () => showInfo(
+                context,
+                'Maintenez pour enregistrer une note vocale.',
+              ),
+              icon: const Icon(Icons.mic_none),
+            ),
+            Container(
+              decoration: const BoxDecoration(
+                color: AppColors.primary,
+                shape: BoxShape.circle,
+              ),
+              child: IconButton(
                 onPressed: onSend,
-                icon: const Icon(Icons.send, color: Colors.white)),
-          )
-        ]),
+                icon: const Icon(Icons.send, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

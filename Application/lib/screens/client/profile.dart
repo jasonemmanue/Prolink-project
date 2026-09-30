@@ -4,6 +4,10 @@ import '../../l10n.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
 import '../auth.dart';
+import '../pro/kyc.dart';
+import 'my_orders.dart';
+import 'settings.dart';
+import 'tickets.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -16,69 +20,118 @@ class ProfileScreen extends StatelessWidget {
         children: [
           const SizedBox(height: 16),
           Center(
-              child: Avatar(
-                  url:
-                      'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=400',
-                  size: 84)),
+            child: Avatar(
+              url:
+                  'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=400',
+              size: 84,
+            ),
+          ),
           const SizedBox(height: 8),
           const Center(
-              child: Text('Emmanuel Sakam',
-                  style: TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w800))),
+            child: Text(
+              'Emmanuel Sakam',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+          ),
           Center(
-              child: Text('Client · Douala',
-                  style: TextStyle(color: AppColors.textSecondary))),
+            child: Text(
+              'Client · Douala',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+          ),
           const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: OutlinedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.edit),
-                label: const Text('Modifier le profil')),
+              onPressed: () => pushScreen(context, const EditProfileScreen()),
+              icon: const Icon(Icons.edit),
+              label: const Text('Modifier le profil'),
+            ),
           ),
           const SizedBox(height: 16),
-          _Section(title: 'Compte', tiles: [
-            _Tile(Icons.badge_outlined, 'Devenir professionnel',
-                subtitle: 'Ouvrir mon compte pro et publier mes services'),
-            _Tile(Icons.shopping_bag_outlined, 'Mes commandes'),
-            _Tile(Icons.confirmation_number_outlined, 'Mes billets lives'),
-          ]),
-          _Section(title: 'Préférences', tiles: [
-            _SwitchTile(Icons.dark_mode_outlined, 'Thème sombre',
-                value: false),
-            _LangTile(loc: loc),
-            _Tile(Icons.notifications_outlined, 'Notifications',
-                subtitle: 'Cloche par pro, plage horaire, catégories'),
-          ]),
-          _Section(title: 'Sécurité', tiles: [
-            _Tile(Icons.lock_outline, 'Mot de passe'),
-            _Tile(Icons.verified_user_outlined, 'Authentification à 2 facteurs',
-                subtitle: 'Recommandée pour les paiements'),
-            _Tile(Icons.fingerprint, 'Verrouillage biométrique'),
-          ]),
-          _Section(title: 'Aide & Légal', tiles: [
-            _Tile(Icons.help_outline, 'Centre d\'aide'),
-            _Tile(Icons.description_outlined, 'Conditions générales'),
-            _Tile(Icons.privacy_tip_outlined, 'Politique de confidentialité'),
-          ]),
+          _Section(
+            title: 'Compte',
+            tiles: [
+              _Tile(
+                Icons.badge_outlined,
+                'Devenir professionnel',
+                subtitle: 'Ouvrir mon compte pro et publier mes services',
+                screen: const KycScreen(),
+              ),
+              _Tile(
+                Icons.shopping_bag_outlined,
+                'Mes commandes',
+                subtitle: '1 livraison à valider',
+                screen: const MyOrdersScreen(),
+              ),
+              _Tile(
+                Icons.confirmation_number_outlined,
+                'Billets lives & replays',
+                screen: const MyTicketsScreen(),
+              ),
+            ],
+          ),
+          _Section(
+            title: 'Préférences',
+            tiles: [
+              _SwitchTile(
+                Icons.dark_mode_outlined,
+                'Thème sombre',
+                value: false,
+              ),
+              _LangTile(loc: loc),
+              _Tile(
+                Icons.notifications_outlined,
+                'Notifications',
+                subtitle: 'Cloche par pro, plage horaire, catégories',
+                screen: const NotificationSettingsScreen(),
+              ),
+            ],
+          ),
+          _Section(
+            title: 'Sécurité',
+            tiles: [
+              _Tile(
+                Icons.verified_user_outlined,
+                'Sécurité & confidentialité',
+                subtitle: '2FA, biométrie, sessions actives',
+                screen: const SecurityScreen(),
+              ),
+            ],
+          ),
+          _Section(
+            title: 'Aide & Légal',
+            tiles: [
+              _Tile(
+                Icons.help_outline,
+                'Aide & support',
+                subtitle: 'FAQ, contact, CGU, confidentialité',
+                screen: const HelpCenterScreen(),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.all(16),
             child: OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.danger,
-                  side: const BorderSide(color: AppColors.danger)),
+                foregroundColor: AppColors.danger,
+                side: const BorderSide(color: AppColors.danger),
+              ),
               onPressed: () => Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (_) => const AuthScreen())),
+                MaterialPageRoute(builder: (_) => const AuthScreen()),
+              ),
               icon: const Icon(Icons.logout),
               label: const Text('Se déconnecter'),
             ),
           ),
           const SizedBox(height: 12),
           Center(
-              child: Text('ProLink v1.0.0 · MVP',
-                  style: TextStyle(
-                      color: AppColors.textSecondary, fontSize: 12))),
+            child: Text(
+              'ProLink v1.0.0 · MVP',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            ),
+          ),
           const SizedBox(height: 24),
         ],
       ),
@@ -94,18 +147,24 @@ class _Section extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Text(title.toUpperCase(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Text(
+              title.toUpperCase(),
               style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textSecondary,
-                  letterSpacing: 0.6)),
-        ),
-        Card(child: Column(children: tiles)),
-      ]),
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textSecondary,
+                letterSpacing: 0.6,
+              ),
+            ),
+          ),
+          Card(child: Column(children: tiles)),
+        ],
+      ),
     );
   }
 }
@@ -114,7 +173,8 @@ class _Tile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String? subtitle;
-  const _Tile(this.icon, this.title, {this.subtitle});
+  final Widget? screen;
+  const _Tile(this.icon, this.title, {this.subtitle, this.screen});
   @override
   Widget build(BuildContext context) {
     return ListTile(
@@ -122,6 +182,7 @@ class _Tile extends StatelessWidget {
       title: Text(title),
       subtitle: subtitle == null ? null : Text(subtitle!),
       trailing: const Icon(Icons.chevron_right),
+      onTap: screen == null ? null : () => pushScreen(context, screen!),
     );
   }
 }

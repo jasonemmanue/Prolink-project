@@ -6,6 +6,9 @@ import '../../theme.dart';
 import '../../widgets/common.dart';
 import '../live_view.dart';
 import 'pro_profile.dart';
+import 'post_detail.dart';
+import 'discover.dart';
+import '../shared/notifications.dart';
 
 class FeedScreen extends StatelessWidget {
   const FeedScreen({super.key});
@@ -24,13 +27,21 @@ class FeedScreen extends StatelessWidget {
             actions: [
               IconButton(
                 icon: const Badge(
-                    label: Text('12'),
-                    child: Icon(Icons.notifications_outlined)),
-                onPressed: () {},
+                  label: Text('12'),
+                  child: Icon(Icons.notifications_outlined),
+                ),
+                onPressed: () =>
+                    pushScreen(context, const NotificationsScreen()),
               ),
               IconButton(
                 icon: const Icon(Icons.search),
-                onPressed: () {},
+                onPressed: () => pushScreen(
+                  context,
+                  Scaffold(
+                    appBar: AppBar(title: const Text('Rechercher')),
+                    body: const DiscoverScreen(),
+                  ),
+                ),
               ),
               const SizedBox(width: 6),
             ],
@@ -61,33 +72,35 @@ class _Stories extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (_, i) {
           final p = MockData.pros[i];
-          return Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [
-                    AppColors.accent,
-                    AppColors.primary,
-                  ]),
-                  shape: BoxShape.circle,
-                ),
-                child: Padding(
+          return InkWell(
+            onTap: () => pushScreen(context, ProProfileScreen(pro: p)),
+            child: Column(
+              children: [
+                Container(
                   padding: const EdgeInsets.all(2),
-                  child: Avatar(url: p.avatar, size: 60),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppColors.accent, AppColors.primary],
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(2),
+                    child: Avatar(url: p.avatar, size: 60),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 6),
-              SizedBox(
-                width: 72,
-                child: Text(
-                  p.name.split(' ').last,
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: 72,
+                  child: Text(
+                    p.name.split(' ').last,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12),
+                  ),
                 ),
-              )
-            ],
+              ],
+            ),
           );
         },
       ),
@@ -110,8 +123,10 @@ class _LivesBanner extends StatelessWidget {
         itemBuilder: (_, i) {
           final l = lives[i];
           return InkWell(
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => LiveViewScreen(live: l))),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => LiveViewScreen(live: l)),
+            ),
             borderRadius: BorderRadius.circular(14),
             child: Container(
               width: 220,
@@ -121,7 +136,9 @@ class _LivesBanner extends StatelessWidget {
                   image: CachedNetworkImageProvider(l.cover),
                   fit: BoxFit.cover,
                   colorFilter: ColorFilter.mode(
-                      Colors.black.withOpacity(0.35), BlendMode.darken),
+                    Colors.black.withOpacity(0.35),
+                    BlendMode.darken,
+                  ),
                 ),
               ),
               padding: const EdgeInsets.all(12),
@@ -129,40 +146,62 @@ class _LivesBanner extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 3),
-                      decoration: BoxDecoration(
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
                           color: AppColors.danger,
-                          borderRadius: BorderRadius.circular(4)),
-                      child: const Text('LIVE',
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'LIVE',
                           style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800)),
-                    ),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.remove_red_eye,
-                        color: Colors.white, size: 14),
-                    const SizedBox(width: 3),
-                    Text('${l.viewers}',
+                            fontSize: 10,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(
+                        Icons.remove_red_eye,
+                        color: Colors.white,
+                        size: 14,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${l.viewers}',
                         style: const TextStyle(
-                            color: Colors.white, fontSize: 12))
-                  ]),
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(l.title,
-                          maxLines: 2,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700)),
-                      Text(l.pro,
-                          style: const TextStyle(
-                              color: Colors.white70, fontSize: 12)),
+                      Text(
+                        l.title,
+                        maxLines: 2,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        l.pro,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
                     ],
-                  )
+                  ),
                 ],
               ),
             ),
@@ -189,9 +228,11 @@ class _PostCard extends StatelessWidget {
               children: [
                 InkWell(
                   onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => ProProfileScreen(pro: post.author))),
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ProProfileScreen(pro: post.author),
+                    ),
+                  ),
                   child: Avatar(url: post.author.avatar, size: 40),
                 ),
                 const SizedBox(width: 10),
@@ -199,30 +240,59 @@ class _PostCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(children: [
-                        Text(post.author.name,
-                            style: const TextStyle(fontWeight: FontWeight.w700)),
-                        const SizedBox(width: 6),
-                        VerifiedBadge(level: post.author.verifiedLevel),
-                      ]),
-                      Text('${post.author.job} · ${post.author.city}',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary)),
+                      Row(
+                        children: [
+                          Text(
+                            post.author.name,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(width: 6),
+                          VerifiedBadge(level: post.author.verifiedLevel),
+                        ],
+                      ),
+                      Text(
+                        '${post.author.job} · ${post.author.city}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
                     ],
                   ),
                 ),
                 if (post.sponsored)
                   const Pill(
-                      label: 'Sponsorisé',
-                      color: AppColors.accent,
-                      icon: Icons.campaign),
-                IconButton(
-                    icon: const Icon(Icons.more_horiz), onPressed: () {}),
+                    label: 'Sponsorisé',
+                    color: AppColors.accent,
+                    icon: Icons.campaign,
+                  ),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_horiz),
+                  onSelected: (v) => v == 'report'
+                      ? showReportSheet(context, 'cette publication')
+                      : showInfo(
+                          context,
+                          v == 'hide' ? 'Publication masquée' : 'Lien copié',
+                        ),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'copy', child: Text('Copier le lien')),
+                    PopupMenuItem(
+                      value: 'hide',
+                      child: Text('Masquer ce contenu'),
+                    ),
+                    PopupMenuItem(value: 'report', child: Text('Signaler')),
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 10),
-            Text(post.text, style: const TextStyle(fontSize: 14, height: 1.35)),
+            InkWell(
+              onTap: () => pushScreen(context, PostDetailScreen(post: post)),
+              child: Text(
+                post.text,
+                style: const TextStyle(fontSize: 14, height: 1.35),
+              ),
+            ),
             if (post.images.isNotEmpty) ...[
               const SizedBox(height: 10),
               ClipRRect(
@@ -231,27 +301,52 @@ class _PostCard extends StatelessWidget {
                   aspectRatio: 16 / 10,
                   child: post.images.length == 1
                       ? CachedNetworkImage(
-                          imageUrl: post.images.first, fit: BoxFit.cover)
-                      : Row(children: [
-                          Expanded(
+                          imageUrl: post.images.first,
+                          fit: BoxFit.cover,
+                        )
+                      : Row(
+                          children: [
+                            Expanded(
                               child: CachedNetworkImage(
-                                  imageUrl: post.images[0], fit: BoxFit.cover)),
-                          const SizedBox(width: 2),
-                          Expanded(
+                                imageUrl: post.images[0],
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            Expanded(
                               child: CachedNetworkImage(
-                                  imageUrl: post.images[1], fit: BoxFit.cover)),
-                        ]),
+                                imageUrl: post.images[1],
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ],
+                        ),
                 ),
               ),
             ],
             const SizedBox(height: 10),
-            Row(children: [
-              _Action(Icons.favorite_border, '${post.likes}'),
-              _Action(Icons.mode_comment_outlined, '${post.comments}'),
-              _Action(Icons.share_outlined, 'Partager'),
-              const Spacer(),
-              _Action(Icons.bookmark_border, ''),
-            ]),
+            Row(
+              children: [
+                _LikeButton(count: post.likes),
+                _Action(
+                  Icons.mode_comment_outlined,
+                  '${post.comments}',
+                  onTap: () =>
+                      pushScreen(context, PostDetailScreen(post: post)),
+                ),
+                _Action(
+                  Icons.share_outlined,
+                  'Partager',
+                  onTap: () => showInfo(context, 'Lien de partage copié'),
+                ),
+                const Spacer(),
+                _Action(
+                  Icons.bookmark_border,
+                  '',
+                  onTap: () => showInfo(context, 'Enregistré dans vos favoris'),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -262,16 +357,49 @@ class _PostCard extends StatelessWidget {
 class _Action extends StatelessWidget {
   final IconData icon;
   final String label;
-  const _Action(this.icon, this.label);
+  final VoidCallback? onTap;
+  const _Action(this.icon, this.label, {this.onTap});
   @override
   Widget build(BuildContext context) {
     return TextButton.icon(
-      onPressed: () {},
+      onPressed: onTap,
       icon: Icon(icon, size: 18, color: AppColors.textSecondary),
-      label: Text(label,
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+      label: Text(
+        label,
+        style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+      ),
       style: TextButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 8)),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+      ),
+    );
+  }
+}
+
+class _LikeButton extends StatefulWidget {
+  final int count;
+  const _LikeButton({required this.count});
+  @override
+  State<_LikeButton> createState() => _LikeButtonState();
+}
+
+class _LikeButtonState extends State<_LikeButton> {
+  bool _liked = false;
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      onPressed: () => setState(() => _liked = !_liked),
+      icon: Icon(
+        _liked ? Icons.favorite : Icons.favorite_border,
+        size: 18,
+        color: _liked ? AppColors.danger : AppColors.textSecondary,
+      ),
+      label: Text(
+        '${widget.count + (_liked ? 1 : 0)}',
+        style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+      ),
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+      ),
     );
   }
 }

@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'l10n.dart';
 import 'theme.dart';
 import 'screens/onboarding.dart';
-import 'widgets/common.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.dark,
-  ));
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+    ),
+  );
   runApp(
     ChangeNotifierProvider(
       create: (_) => AppLocale(),
@@ -33,6 +35,12 @@ class ProLinkApp extends StatelessWidget {
       darkTheme: AppTheme.dark(),
       locale: loc.locale,
       supportedLocales: const [Locale('fr'), Locale('en')],
+      // Requis pour les sélecteurs date/heure et les libellés Material en FR.
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       home: const SplashScreen(),
     );
   }
@@ -51,7 +59,8 @@ class _SplashScreenState extends State<SplashScreen> {
     Future.delayed(const Duration(milliseconds: 1400), () {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const OnboardingScreen()));
+        MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+      );
     });
   }
 
@@ -77,16 +86,22 @@ class _SplashScreenState extends State<SplashScreen> {
                     color: Colors.white.withOpacity(0.15),
                     shape: BoxShape.circle,
                   ),
-                  child: Image.asset('assets/images/logo.png',
-                      width: 96, height: 96),
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    width: 96,
+                    height: 96,
+                  ),
                 ),
                 const SizedBox(height: 24),
-                const Text('ProLink',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 40,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5)),
+                const Text(
+                  'ProLink',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 40,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
+                  ),
+                ),
                 const SizedBox(height: 6),
                 const Text(
                   'La marketplace sociale des pros africains',
@@ -94,7 +109,8 @@ class _SplashScreenState extends State<SplashScreen> {
                 ),
                 const SizedBox(height: 40),
                 const CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation(Colors.white)),
+                  valueColor: AlwaysStoppedAnimation(Colors.white),
+                ),
               ],
             ),
           ),

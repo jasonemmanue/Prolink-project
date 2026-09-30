@@ -16,18 +16,35 @@ Splash (main.dart)
   └─▶ Onboarding (4 pages)
         └─▶ Auth (choix du rôle Internaute / Pro)
               ├─▶ HomeShell        (rôle « Je cherche »)
-              │     ├─ Feed
-              │     ├─ Discover
-              │     ├─ Messaging ─▶ Chat (traduction FR⇄EN)
-              │     ├─ Wallet
+              │     ├─ Feed ──────────▶ Notifications ─▶ Réglages notifications
+              │     │   ├─ 🔍 ────────▶ Recherche (Discover plein écran)
+              │     │   ├─ post ──────▶ PostDetail (commentaires, signalement)
+              │     │   └─ live ──────▶ LiveView (suivre, pourboire, signaler)
+              │     ├─ Discover  (filtres + onglets Pros/Publications/Lives/Événements/Groupes)
+              │     │   └─ live payant ▶ Achat de billet (sheet)
+              │     ├─ Messaging (Tous / Non lus / Groupes / Archivés)
+              │     │   ├─ Chat (traduction FR⇄EN, pièces jointes)
+              │     │   ├─ GroupScreen · CreateGroup
+              │     │   └─ Nouveau message (sheet)
+              │     ├─ Wallet ───────▶ TopUp (recharge Mobile Money / carte)
               │     └─ Profile
+              │         ├─ EditProfile · MyOrders ─▶ OrderTracking ─▶ Dispute / Review
+              │         ├─ MyTickets (billets + replays) · Kyc (devenir pro)
+              │         └─ NotificationSettings · Security (2FA, sessions) · HelpCenter
+              │
+              │   ProProfile ─▶ ServiceDetail ─▶ OrderFlow (escrow)
+              │                              └─▶ QuoteRequest (devis)
               │
               └─▶ ProShell         (rôle « Je propose »)
                     ├─ Dashboard   (+ FAB « Publier »)
-                    ├─ Orders
-                    ├─ Catalog
-                    ├─ LiveBroadcast
-                    └─ Finances
+                    │   ├─ Notifications · Stats · Publish ─▶ Sponsor
+                    │   ├─ Raccourcis : ServiceEditor · Live · Messages · Avis · Sponsor · Groupe
+                    │   └─ Alertes : QuoteReply · Litige (OrderDetail) · Kyc · Plans
+                    ├─ Orders ─────▶ ProOrderDetail (confirmer / livrer / signaler)
+                    │           └─▶ QuoteReply (devis à chiffrer)
+                    ├─ Catalog ────▶ ServiceEditor (nouveau / modifier, statut)
+                    ├─ LiveBroadcast ─▶ LivePrecheck ─▶ LiveOnAir ─▶ LiveSummary (replay)
+                    └─ Finances ───▶ Withdraw (retrait Mobile Money + OTP)
 ```
 
 Écrans annexes accessibles depuis les onglets :
@@ -151,6 +168,91 @@ des versements, exports CSV / PDF fictifs.
 Cartes métriques (Audience 30j, Engagement, Revenus 30j, Taux de réponse),
 sources de trafic (`LinearProgressIndicator` par canal).
 
+## Écrans ajoutés — v1.1 (conformité au chapitre 8 du cahier des charges)
+
+Un audit du cahier des charges (chap. 7 « User stories », chap. 8
+« Spécifications UX ») a fait ressortir des écrans manquants et ~27 boutons
+sans destination (`onPressed: () {}`). Tous sont désormais maquettés et reliés.
+
+### Partagés — `screens/shared/`
+
+| # | Écran | Fichier | Couvre |
+|---|-------|---------|--------|
+| 20 | Centre de notifications (filtres, « Tout lire ») | `shared/notifications.dart` | §8.1.1 (badges du header) |
+| 21 | Recharger le portefeuille | `shared/wallet_actions.dart` › `TopUpScreen` | UC-IN-21 |
+| 22 | Retrait Mobile Money (montant → OTP → succès) | `shared/wallet_actions.dart` › `WithdrawScreen` | UC-PR-18, annexe C.3 |
+
+### Internaute — `screens/client/`
+
+| # | Écran | Fichier | Couvre |
+|---|-------|---------|--------|
+| 23 | Filtres de recherche (ville, rayon, note, tarif, dispo, vérifiés) | `discover_tabs.dart` › `showDiscoverFilters` | §8.1.2, UC-IN-03 |
+| 24 | Onglets Publications / Lives / Événements de Découvrir | `discover_tabs.dart` | §8.1.2 |
+| 25 | Détail d'un post + commentaires | `post_detail.dart` | UC-IN-06 |
+| 26 | Groupes : liste, fil, adhésion (public / privé / payant) | `groups.dart` › `GroupList`, `GroupScreen` | UC-IN-07 |
+| 27 | Pièces jointes chat (PDF, photo, vidéo, vocal, devis) | `groups.dart` › `showAttachmentSheet` | UC-IN-08 |
+| 28 | Demande de devis | `my_orders.dart` › `QuoteRequestScreen` | UC-IN-10 |
+| 29 | Mes commandes | `my_orders.dart` › `MyOrdersScreen` | UC-IN-12 |
+| 30 | Suivi de commande (timeline escrow, valider, annuler) | `my_orders.dart` › `OrderTrackingScreen` | UC-IN-12, annexe C.1 |
+| 31 | Ouverture / suivi de litige | `my_orders.dart` › `DisputeScreen` | UC-IN-13 |
+| 32 | Noter et rédiger un avis | `my_orders.dart` › `ReviewScreen` | UC-IN-14 |
+| 33 | Achat de billet de live payant | `tickets.dart` › `showTicketSheet` | UC-IN-15, annexe C.2 |
+| 34 | Mes billets & replays | `tickets.dart` › `MyTicketsScreen` | UC-IN-16, UC-IN-19 |
+| 35 | Réglages notifications (catégories, cloche par pro, ne pas déranger) | `settings.dart` › `NotificationSettingsScreen` | §8.1.8, UC-IN-05 |
+| 36 | Sécurité (2FA, biométrie, sessions actives, export données) | `settings.dart` › `SecurityScreen` | §8.1.8 |
+| 37 | Modifier le profil | `settings.dart` › `EditProfileScreen` | UC-IN-01 |
+| 38 | Aide, FAQ, support, CGU | `settings.dart` › `HelpCenterScreen` | §8.1.8 |
+| — | Signalement (post, pro, live, groupe, avis) | `widgets/common.dart` › `showReportSheet` | UC-IN-22 |
+
+### Professionnel — `screens/pro/`
+
+| # | Écran | Fichier | Couvre |
+|---|-------|---------|--------|
+| 39 | Détail commande (confirmer / livrer / refuser / signaler) | `order_detail.dart` › `ProOrderDetailScreen` | §8.2.4 |
+| 40 | Répondre à un devis (lignes, total, délai) | `order_detail.dart` › `QuoteReplyScreen` | UC-PR-08 |
+| 41 | Éditeur de prestation (tarif, 3 formules, livrables, statut) | `service_editor.dart` | §8.2.3, UC-PR-07 |
+| 42 | Vérification caméra / micro / réseau | `live_studio.dart` › `LivePrecheckScreen` | §8.2.5 |
+| 43 | Diffusion en direct (chat, dons, spectateurs, contrôles, fin confirmée) | `live_studio.dart` › `LiveOnAirScreen` | §8.2.5 |
+| 44 | Bilan de live + politique de replay | `live_studio.dart` › `LiveSummaryScreen` | UC-PR-14 |
+| 45 | KYC 3 niveaux (Vérifié / Premium / Expert) | `kyc.dart` | UC-PR-01 |
+| 46 | Sponsorisation en 3 étapes (quoi → audience/budget → récap) | `sponsor.dart` › `SponsorScreen` | UC-PR-16 |
+| 47 | Packs Gratuit / Premium / Business | `sponsor.dart` › `PlansScreen` | UC-PR-20 |
+| 48 | Avis reçus + réponse publique + blocage | `reviews.dart` | UC-PR-19, UC-PR-22 |
+| — | Création de groupe (public / privé / payant) | `client/groups.dart` › `CreateGroupScreen` | UC-PR-10 |
+
+### Écrans existants enrichis
+
+- **Feed** : cloche → Notifications, loupe → Recherche, stories cliquables,
+  menu « ⋯ » (copier / masquer / signaler), like interactif, commentaires →
+  PostDetail.
+- **Discover** : bouton filtres avec compteur, 4 onglets réels (plus de
+  placeholders), bouton « Voir » actif, état vide.
+- **Messaging** : onglets qui filtrent vraiment, onglet Groupes, nouveau
+  message, nouveau groupe.
+- **Chat** : pièces jointes, note vocale, appels audio/vidéo (feedback).
+- **Pro profile** : Suivre + cloche séparés, partager, signaler, onglet Lives.
+- **Service detail** : « Demander un devis » → QuoteRequest.
+- **Live view** : durée, Suivre, Partager (lives gratuits uniquement),
+  Signaler, pourboire sélectionnable qui s'affiche dans le chat.
+- **Wallet** : Recharger → TopUp, export du relevé, retrait bloqué pour
+  les internautes (§8.1.7 : « retrait limité aux pros »).
+- **Profile** : chaque ligne mène à un écran.
+- **Pro Dashboard** : raccourcis Avis / Sponsoriser / Groupe, 4 alertes
+  cliquables (devis, litige, KYC, packs).
+- **Pro Orders** : données `MockData.orders()`, devis à chiffrer, détail.
+- **Pro Catalog** : FAB « Nouvelle prestation », réordonnancement réel,
+  statuts Active / Brouillon / En pause, suppression confirmée.
+- **Pro Live** : sélecteurs date/heure, « Programmer » vs « Démarrer ».
+- **Pro Publish** : compteur de médias (10 max), programmation, sponsorisation.
+- **Pro Finances** : retrait → WithdrawScreen (OTP 2FA).
+- **Pro Stats** : export CSV.
+
+### Hors périmètre mobile
+
+Les parcours **Annonceur** (UC-AN-01 → 08) et **Administrateur**
+(UC-AD-01 → 14) relèvent du back-office Next.js (`backoffice/` : modules
+`advertisers`, `ads`, `pros`, `disputes`, `moderation`, …).
+
 ## Données démo
 
 `lib/data.dart::MockData` fournit :
@@ -162,6 +264,11 @@ sources de trafic (`LinearProgressIndicator` par canal).
 - **7 services** couvrant les 4 types de tarification (`fixed`, `from`,
   `quote`, plus `hourly` / `monthly` supportés par le modèle).
 - **3 lives** (1 en direct, 2 planifiés, 1 gratuit / 2 payants).
+- **5 commandes** (`MockData.orders()`) couvrant tous les statuts escrow :
+  en attente, en cours, livrée, terminée, litige.
+- **7 notifications** (`MockData.notifications()`) : live, commande,
+  message, paiement, abonnement, avis, sécurité.
+- **3 groupes** (`client/groups.dart::demoGroups`) : public, privé, payant.
 - **2 conversations** avec messages FR + EN mélangés (démo traduction).
 - **12 catégories** métier.
 

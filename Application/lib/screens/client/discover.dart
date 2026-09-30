@@ -4,6 +4,8 @@ import '../../models.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
 import 'pro_profile.dart';
+import 'discover_tabs.dart';
+import 'groups.dart';
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
@@ -16,6 +18,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   late final TabController _tab;
   String _query = '';
   String? _cat;
+  DiscoverFilters _filters = DiscoverFilters();
 
   @override
   void initState() {
@@ -27,11 +30,12 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   Widget build(BuildContext context) {
     final pros = MockData.pros.where((p) {
       final catOk = _cat == null || p.category == _cat;
-      final qOk = _query.isEmpty ||
+      final qOk =
+          _query.isEmpty ||
           p.name.toLowerCase().contains(_query.toLowerCase()) ||
           p.job.toLowerCase().contains(_query.toLowerCase()) ||
           p.city.toLowerCase().contains(_query.toLowerCase());
-      return catOk && qOk;
+      return catOk && qOk && _filters.matches(p);
     }).toList();
 
     return SafeArea(
@@ -39,12 +43,31 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-            child: TextField(
-              decoration: const InputDecoration(
-                hintText: 'Rechercher un pro, un service, une ville…',
-                prefixIcon: Icon(Icons.search),
-              ),
-              onChanged: (v) => setState(() => _query = v),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    decoration: const InputDecoration(
+                      hintText: 'Rechercher un pro, un service, une ville…',
+                      prefixIcon: Icon(Icons.search),
+                    ),
+                    onChanged: (v) => setState(() => _query = v),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  tooltip: 'Filtres',
+                  onPressed: () async {
+                    final f = await showDiscoverFilters(context, _filters);
+                    if (f != null) setState(() => _filters = f);
+                  },
+                  icon: Badge(
+                    isLabelVisible: _filters.activeCount > 0,
+                    label: Text('${_filters.activeCount}'),
+                    child: const Icon(Icons.tune),
+                  ),
+                ),
+              ],
             ),
           ),
           SizedBox(
@@ -66,7 +89,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 return FilterChip(
                   label: Text(c),
                   selected: _cat == c,
-                  onSelected: (_) => setState(() => _cat = _cat == c ? null : c),
+                  onSelected: (_) =>
+                      setState(() => _cat = _cat == c ? null : c),
                 );
               },
             ),
@@ -90,13 +114,13 @@ class _DiscoverScreenState extends State<DiscoverScreen>
               controller: _tab,
               children: [
                 _ProGrid(pros: pros),
-                const _Placeholder(icon: Icons.article, label: 'Articles & posts'),
-                const _Placeholder(icon: Icons.podcasts, label: 'Lives à venir'),
-                const _Placeholder(icon: Icons.event, label: 'Événements pros'),
-                const _Placeholder(icon: Icons.groups, label: 'Groupes publics'),
+                DiscoverPostsTab(query: _query),
+                const DiscoverLivesTab(),
+                const DiscoverEventsTab(),
+                const GroupList(),
               ],
             ),
-          )
+          ),
         ],
       ),
     );
@@ -108,6 +132,14 @@ class _ProGrid extends StatelessWidget {
   const _ProGrid({required this.pros});
   @override
   Widget build(BuildContext context) {
+    if (pros.isEmpty) {
+      return Center(
+        child: Text(
+          'Aucun pro ne correspond à ces filtres',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+      );
+    }
     return GridView.builder(
       padding: const EdgeInsets.all(12),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -120,8 +152,10 @@ class _ProGrid extends StatelessWidget {
       itemBuilder: (_, i) {
         final p = pros[i];
         return InkWell(
-          onTap: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => ProProfileScreen(pro: p))),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => ProProfileScreen(pro: p)),
+          ),
           borderRadius: BorderRadius.circular(14),
           child: Card(
             child: Padding(
@@ -131,71 +165,74 @@ class _ProGrid extends StatelessWidget {
                 children: [
                   Center(child: Avatar(url: p.avatar, size: 72)),
                   const SizedBox(height: 8),
-                  Row(children: [
-                    Expanded(
-                        child: Text(p.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700))),
-                    VerifiedBadge(level: p.verifiedLevel),
-                  ]),
-                  Text(p.job,
-                      style: TextStyle(
-                          fontSize: 12, color: AppColors.textSecondary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          p.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      VerifiedBadge(level: p.verifiedLevel),
+                    ],
+                  ),
+                  Text(
+                    p.job,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   const SizedBox(height: 6),
-                  Row(children: [
-                    const Icon(Icons.star,
-                        color: AppColors.accent, size: 14),
-                    const SizedBox(width: 2),
-                    Text('${p.rating}',
+                  Row(
+                    children: [
+                      const Icon(Icons.star, color: AppColors.accent, size: 14),
+                      const SizedBox(width: 2),
+                      Text(
+                        '${p.rating}',
                         style: const TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.w600)),
-                    const SizedBox(width: 8),
-                    Icon(Icons.people,
-                        size: 12, color: AppColors.textSecondary),
-                    const SizedBox(width: 2),
-                    Text('${p.followers}',
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.people,
+                        size: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 2),
+                      Text(
+                        '${p.followers}',
                         style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary)),
-                  ]),
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
                   const Spacer(),
                   SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                          onPressed: () {},
-                          style: OutlinedButton.styleFrom(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 6)),
-                          child: const Text('Voir'))),
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () =>
+                          pushScreen(context, ProProfileScreen(pro: p)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                      ),
+                      child: const Text('Voir'),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
         );
       },
-    );
-  }
-}
-
-class _Placeholder extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  const _Placeholder({required this.icon, required this.label});
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 64, color: AppColors.textSecondary),
-          const SizedBox(height: 8),
-          Text(label, style: TextStyle(color: AppColors.textSecondary)),
-        ],
-      ),
     );
   }
 }

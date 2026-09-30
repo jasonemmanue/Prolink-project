@@ -12,5 +12,10 @@ void main() {
       ),
     );
     expect(find.text('ProLink'), findsOneWidget);
+
+    // Laisse expirer le timer du splash (1,4 s) : navigation vers l'onboarding.
+    await tester.pump(const Duration(milliseconds: 1500));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Passer'), findsOneWidget);
   });
 }
