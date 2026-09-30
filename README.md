@@ -8,7 +8,7 @@ Trois briques dans ce dépôt :
 |---|---|---|
 | [`Application/`](./Application) | App mobile Flutter (Internaute + Professionnel) | Flutter 3.38 / Dart 3.10 |
 | [`backoffice/`](./backoffice) | Panneau d'administration web | Next.js 14 / TypeScript / Tailwind |
-| [`Api/`](./Api) | Backend REST + WebSockets | FastAPI / PostgreSQL / Redis |
+| [`Api/`](./Api) | Backend REST + WebSockets | FastAPI / PostgreSQL / Docker |
 
 Documentation métier : `ProLink_Cahier_des_Charges_v1.0.pdf` (57 pages).
 
@@ -26,10 +26,10 @@ Documentation métier : `ProLink_Cahier_des_Charges_v1.0.pdf` (57 pages).
 ## Démarrage rapide
 
 ```bash
-# API
-cd Api && python -m venv .venv && .venv/Scripts/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+# API + PostgreSQL (Docker) → http://localhost:8000/docs
+cd Api && docker compose up -d --build
+# Tests d'intégration
+docker compose run --rm --entrypoint pytest api -q
 
 # Backoffice
 cd backoffice && npm install && npm run dev
