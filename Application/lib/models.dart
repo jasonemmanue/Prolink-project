@@ -113,10 +113,16 @@ class Conversation {
   final String id;
   final Pro peer;
   final List<ChatMessage> messages;
+  final int unread;
+  final bool online;
+  final bool archived;
   const Conversation({
     required this.id,
     required this.peer,
     required this.messages,
+    this.unread = 0,
+    this.online = false,
+    this.archived = false,
   });
 }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../data.dart';
 import '../../l10n.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
@@ -20,11 +21,7 @@ class ProfileScreen extends StatelessWidget {
         children: [
           const SizedBox(height: 16),
           Center(
-            child: Avatar(
-              url:
-                  'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=400',
-              size: 84,
-            ),
+            child: Avatar(url: MockData.meAvatar, size: 84),
           ),
           const SizedBox(height: 8),
           const Center(
@@ -38,6 +35,16 @@ class ProfileScreen extends StatelessWidget {
               'Client · Douala',
               style: TextStyle(color: AppColors.textSecondary),
             ),
+          ),
+          const SizedBox(height: 16),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Row(children: [
+              Expanded(child: _Stat(value: '11', label: 'Commandes')),
+              Expanded(child: _Stat(value: '24', label: 'Pros suivis')),
+              Expanded(child: _Stat(value: '7', label: 'Avis donnés')),
+              Expanded(child: _Stat(value: '3', label: 'Billets')),
+            ]),
           ),
           const SizedBox(height: 12),
           Padding(
@@ -229,5 +236,24 @@ class _LangTile extends StatelessWidget {
         },
       ),
     );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  final String value;
+  final String label;
+  const _Stat({required this.value, required this.label});
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      Text(value,
+          style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: AppColors.primary)),
+      const SizedBox(height: 2),
+      Text(label,
+          style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+    ]);
   }
 }

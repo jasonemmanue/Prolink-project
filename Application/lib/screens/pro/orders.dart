@@ -10,7 +10,9 @@ class ProOrdersScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final orders = MockData.orders();
+    // Pro connecté (démo) : Me. Aïcha Nkomo.
+    final orders =
+        MockData.orders().where((o) => o.pro.id == MockData.pros[0].id).toList();
     List<Order> by(bool Function(Order) f) => orders.where(f).toList();
     final pending = by((o) => o.status == OrderStatus.pending);
     final running = by((o) => o.status == OrderStatus.inProgress);
@@ -20,35 +22,31 @@ class ProOrdersScreen extends StatelessWidget {
           o.status == OrderStatus.completed,
     );
     final disputes = by((o) => o.status == OrderStatus.disputed);
-    return SafeArea(
-      child: DefaultTabController(
-        length: 4,
-        child: Column(
+    return DefaultTabController(
+      length: 4,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Commandes & devis'),
+          bottom: TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            labelColor: AppColors.primary,
+            unselectedLabelColor: AppColors.textSecondary,
+            indicatorColor: AppColors.primary,
+            tabs: [
+              Tab(text: 'En attente (${pending.length + 2})'),
+              Tab(text: 'En cours (${running.length})'),
+              Tab(text: 'Livrées (${delivered.length})'),
+              Tab(text: 'Litiges (${disputes.length})'),
+            ],
+          ),
+        ),
+        body: TabBarView(
           children: [
-            AppBar(
-              title: const Text('Commandes & devis'),
-              bottom: TabBar(
-                isScrollable: true,
-                labelColor: AppColors.primary,
-                indicatorColor: AppColors.primary,
-                tabs: [
-                  Tab(text: 'En attente (${pending.length + 2})'),
-                  Tab(text: 'En cours (${running.length})'),
-                  const Tab(text: 'Livrées'),
-                  Tab(text: 'Litiges (${disputes.length})'),
-                ],
-              ),
-            ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _list(context, pending, withQuotes: true),
-                  _list(context, running),
-                  _list(context, delivered),
-                  _list(context, disputes),
-                ],
-              ),
-            ),
+            _list(context, pending, withQuotes: true),
+            _list(context, running),
+            _list(context, delivered),
+            _list(context, disputes),
           ],
         ),
       ),

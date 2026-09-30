@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../data.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
 import '../shared/wallet_actions.dart';
@@ -88,10 +89,14 @@ class ProFinancesScreen extends StatelessWidget {
                   ),
                   title: Text(
                     ok
-                        ? 'Prestation payée par client${i + 1}'
+                        ? 'Payé par ${MockData.clients[i % MockData.clients.length]}'
                         : 'En séquestre — livraison en cours',
                   ),
-                  subtitle: Text('#PL${20450 + i} · il y a ${i + 1}j'),
+                  subtitle: Text(
+                    '${MockData.servicesOf(MockData.pros[0])[i % 5].title}\n'
+                    '#PL-${10420 - i * 3} · il y a ${i + 1} j',
+                  ),
+                  isThreeLine: true,
                   trailing: Text(
                     '${ok ? '+' : ''}${formatXaf(15000 + i * 4000)}',
                     style: TextStyle(

@@ -138,17 +138,10 @@ class WalletScreen extends StatelessWidget {
             ),
           ),
           SliverList.builder(
-            itemCount: 8,
+            itemCount: _transactions.length,
             itemBuilder: (_, i) {
-              final types = [
-                'Achat prestation',
-                'Rechargement',
-                'Billet live',
-                'Pourboire',
-                'Retrait',
-              ];
-              final t = types[i % types.length];
-              final positive = t == 'Rechargement' || t == 'Retrait';
+              final (t, detail, amount, date) = _transactions[i];
+              final positive = amount > 0;
               return ListTile(
                 leading: CircleAvatar(
                   backgroundColor:
@@ -161,11 +154,12 @@ class WalletScreen extends StatelessWidget {
                 ),
                 title: Text(t),
                 subtitle: Text(
-                  'il y a ${i + 1}j · Ref #P${100200 + i}',
+                  '$detail\n$date · Réf #P${100231 - i * 7}',
                   style: const TextStyle(fontSize: 12),
                 ),
+                isThreeLine: true,
                 trailing: Text(
-                  '${positive ? '+' : '-'} ${formatXaf(5000 + i * 1500)}',
+                  '${positive ? '+' : '-'} ${formatXaf(amount.abs())}',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     color: positive ? AppColors.success : AppColors.danger,
@@ -179,6 +173,19 @@ class WalletScreen extends StatelessWidget {
     );
   }
 }
+
+/// Historique de démo : (type, détail, montant signé, date).
+const _transactions = [
+  ('Achat prestation', 'Consultation juridique · Me. Aïcha Nkomo', -15000, 'Aujourd\'hui'),
+  ('Rechargement', 'MTN Mobile Money · +237 6•• •• 42', 20000, 'Hier'),
+  ('Billet live', 'Masterclass cuisine fusion · Chef Landry', -5000, 'Hier'),
+  ('Pourboire', 'Live « Tresses knotless » · Sandrine Mbida', -1000, 'il y a 2 j'),
+  ('Remboursement', 'Commande PL-10362 annulée', 25000, 'il y a 4 j'),
+  ('Achat prestation', 'Coaching HIIT 4 semaines · Dr. Muna', -30000, 'il y a 6 j'),
+  ('Rechargement', 'Orange Money · +237 6•• •• 18', 50000, 'il y a 9 j'),
+  ('Billet live', 'Créer sa SARL en 3 étapes · Me. Aïcha', -2000, 'il y a 12 j'),
+  ('Achat prestation', 'Tresses knotless · Sandrine Mbida', -15000, 'il y a 15 j'),
+];
 
 class _MetricTile extends StatelessWidget {
   final IconData icon;

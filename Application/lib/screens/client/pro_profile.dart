@@ -7,6 +7,7 @@ import '../../widgets/common.dart';
 import 'service_detail.dart';
 import 'chat.dart';
 import 'discover_tabs.dart';
+import 'post_detail.dart';
 
 class ProProfileScreen extends StatelessWidget {
   final Pro pro;
@@ -145,19 +146,7 @@ class ProProfileScreen extends StatelessWidget {
           ],
           body: TabBarView(
             children: [
-              ListView.builder(
-                padding: const EdgeInsets.all(12),
-                itemCount: 3,
-                itemBuilder: (_, i) => Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.article_outlined),
-                    title: Text('Publication ${i + 1}'),
-                    subtitle: const Text(
-                      'Astuce ou actualité pro. Aperçu du fil de ce professionnel.',
-                    ),
-                  ),
-                ),
-              ),
+              _PostsTab(pro: pro),
               GridView.builder(
                 padding: const EdgeInsets.all(12),
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -165,13 +154,28 @@ class ProProfileScreen extends StatelessWidget {
                   crossAxisSpacing: 8,
                   mainAxisSpacing: 8,
                 ),
-                itemCount: 6,
+                itemCount: _portfolio.length,
                 itemBuilder: (_, i) => ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: CachedNetworkImage(
-                    imageUrl: pro.cover,
-                    fit: BoxFit.cover,
-                  ),
+                  child: Stack(fit: StackFit.expand, children: [
+                    CachedNetworkImage(
+                      imageUrl: _portfolio[i].$1,
+                      fit: BoxFit.cover,
+                    ),
+                    Align(
+                      alignment: Alignment.bottomLeft,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(8),
+                        color: Colors.black45,
+                        child: Text(_portfolio[i].$2,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 12)),
+                      ),
+                    ),
+                  ]),
                 ),
               ),
               ListView.separated(
@@ -183,21 +187,127 @@ class ProProfileScreen extends StatelessWidget {
               const DiscoverLivesTab(),
               ListView.builder(
                 padding: const EdgeInsets.all(12),
-                itemCount: 4,
-                itemBuilder: (_, i) => Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.star, color: AppColors.accent),
-                    title: const Text('5 · Excellente prestation'),
-                    subtitle: const Text(
-                      'Réactif, professionnel, pédagogue. Je recommande.',
+                itemCount: _reviews.length,
+                itemBuilder: (_, i) {
+                  final r = _reviews[i];
+                  return Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            CircleAvatar(
+                              radius: 16,
+                              backgroundColor:
+                                  AppColors.secondary.withOpacity(0.15),
+                              child: Text(r.$1[0],
+                                  style: const TextStyle(
+                                      color: AppColors.secondary)),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(r.$1,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700)),
+                            ),
+                            Text('★' * r.$2,
+                                style:
+                                    const TextStyle(color: AppColors.accent)),
+                          ]),
+                          const SizedBox(height: 6),
+                          Text(r.$3),
+                          const SizedBox(height: 4),
+                          Text(r.$4,
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary)),
+                        ],
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+const _portfolio = [
+  ('https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=600',
+      'Dossier de création SARL'),
+  ('https://images.unsplash.com/photo-1521791136064-7986c2920216?w=600',
+      'Signature partenariat'),
+  ('https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=600',
+      'Atelier entrepreneurs'),
+  ('https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=600',
+      'Événement client'),
+  ('https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600',
+      'Séminaire d\'entreprise'),
+  ('https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=600',
+      'Programme bien-être'),
+];
+
+const _reviews = [
+  ('Grace Fotso', 5, 'Très professionnelle, livrables rendus en avance. Je recommande sans hésiter.', 'il y a 2 jours · Pack complet'),
+  ('Paul Ndongo', 4, 'Bon accompagnement, un peu de délai au démarrage mais résultat impeccable.', 'il y a 6 jours · Formule Standard'),
+  ('Estelle Kamga', 5, 'Explications claires, réponses rapides dans le chat. Top !', 'il y a 2 semaines · Consultation'),
+  ('Yannick Onana', 5, 'Deuxième commande, toujours aussi sérieux. Paiement séquestre rassurant.', 'il y a 3 semaines · Formule Premium'),
+  ('Serge Abena', 4, 'Prestation conforme à la description. Je repasserai.', 'il y a 1 mois · Formule Basic'),
+];
+
+/// Publications de ce pro, tirées du fil.
+class _PostsTab extends StatelessWidget {
+  final Pro pro;
+  const _PostsTab({required this.pro});
+  @override
+  Widget build(BuildContext context) {
+    final posts = MockData.feed().where((p) => p.author.id == pro.id).toList();
+    if (posts.isEmpty) {
+      return Center(
+        child: Text('Aucune publication pour le moment',
+            style: TextStyle(color: AppColors.textSecondary)),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: posts.length,
+      itemBuilder: (_, i) {
+        final p = posts[i];
+        return Card(
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => pushScreen(context, PostDetailScreen(post: p)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (p.images.isNotEmpty)
+                  AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: CachedNetworkImage(
+                        imageUrl: p.images.first, fit: BoxFit.cover),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(p.text, maxLines: 4, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 8),
+                      Text('❤ ${p.likes}   💬 ${p.comments}   · ${timeAgo(p.date)}',
+                          style: TextStyle(
+                              fontSize: 12, color: AppColors.textSecondary)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

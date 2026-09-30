@@ -337,11 +337,7 @@ class EditProfileScreen extends StatelessWidget {
           Center(
             child: Stack(
               children: [
-                const Avatar(
-                  url:
-                      'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=400',
-                  size: 96,
-                ),
+                Avatar(url: MockData.meAvatar, size: 96),
                 Positioned(
                   right: 0,
                   bottom: 0,

@@ -6,59 +6,81 @@ import '../../widgets/common.dart';
 import 'chat.dart';
 import 'groups.dart';
 
-class MessagingScreen extends StatelessWidget {
+class MessagingScreen extends StatefulWidget {
   const MessagingScreen({super.key});
   @override
+  State<MessagingScreen> createState() => _MessagingScreenState();
+}
+
+class _MessagingScreenState extends State<MessagingScreen> {
+  final _all = MockData.conversations();
+  String _query = '';
+
+  List<Conversation> _filter(bool Function(Conversation) f) => _all
+      .where(f)
+      .where((c) =>
+          _query.isEmpty ||
+          c.peer.name.toLowerCase().contains(_query.toLowerCase()))
+      .toList();
+
+  @override
   Widget build(BuildContext context) {
-    final convs = MockData.conversations();
-    return SafeArea(
-      child: DefaultTabController(
-        length: 4,
-        child: Column(
-          children: [
-            AppBar(
-              title: const Text('Messages'),
-              bottom: const TabBar(
+    final unread = _all.where((c) => c.unread > 0 && !c.archived).length;
+    return DefaultTabController(
+      length: 4,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Messages'),
+          actions: [
+            IconButton(
+              tooltip: 'Nouveau groupe',
+              onPressed: () => pushScreen(context, const CreateGroupScreen()),
+              icon: const Icon(Icons.group_add_outlined),
+            ),
+            IconButton(
+              tooltip: 'Nouveau message',
+              onPressed: () => _newMessage(context),
+              icon: const Icon(Icons.edit_note_outlined),
+            ),
+            const SizedBox(width: 6),
+          ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(108),
+            child: Column(children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: TextField(
+                  onChanged: (v) => setState(() => _query = v),
+                  decoration: const InputDecoration(
+                    hintText: 'Rechercher une conversation',
+                    prefixIcon: Icon(Icons.search),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              TabBar(
                 isScrollable: true,
+                tabAlignment: TabAlignment.start,
                 labelColor: AppColors.primary,
+                unselectedLabelColor: AppColors.textSecondary,
                 indicatorColor: AppColors.primary,
                 tabs: [
-                  Tab(text: 'Tous'),
-                  Tab(text: 'Non lus'),
-                  Tab(text: 'Groupes'),
-                  Tab(text: 'Archivés'),
+                  const Tab(text: 'Tous'),
+                  Tab(text: 'Non lus ($unread)'),
+                  const Tab(text: 'Groupes'),
+                  const Tab(text: 'Archivés'),
                 ],
               ),
-              actions: [
-                IconButton(
-                  tooltip: 'Nouveau groupe',
-                  onPressed: () =>
-                      pushScreen(context, const CreateGroupScreen()),
-                  icon: const Icon(Icons.group_add_outlined),
-                ),
-                IconButton(
-                  tooltip: 'Nouveau message',
-                  onPressed: () => _newMessage(context),
-                  icon: const Icon(Icons.edit_note_outlined),
-                ),
-                const SizedBox(width: 6),
-              ],
-            ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _ConversationList(convs: convs),
-                  _ConversationList(convs: convs.take(1).toList()),
-                  const GroupList(),
-                  Center(
-                    child: Text(
-                      'Aucune conversation archivée',
-                      style: TextStyle(color: AppColors.textSecondary),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            ]),
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _ConversationList(convs: _filter((c) => !c.archived)),
+            _ConversationList(
+                convs: _filter((c) => c.unread > 0 && !c.archived)),
+            const GroupList(),
+            _ConversationList(convs: _filter((c) => c.archived)),
           ],
         ),
       ),
@@ -69,9 +91,12 @@ class MessagingScreen extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
+      isScrollControlled: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.7,
+        builder: (_, scroll) => ListView(
+          controller: scroll,
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -84,7 +109,7 @@ class MessagingScreen extends StatelessWidget {
               (p) => ListTile(
                 leading: Avatar(url: p.avatar, size: 40),
                 title: Text(p.name),
-                subtitle: Text(p.job),
+                subtitle: Text('${p.job} · ${p.city}'),
                 onTap: () {
                   Navigator.pop(ctx);
                   pushScreen(context, ChatScreen(peer: p));
@@ -103,69 +128,99 @@ class _ConversationList extends StatelessWidget {
   const _ConversationList({required this.convs});
   @override
   Widget build(BuildContext context) {
+    if (convs.isEmpty) {
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.forum_outlined,
+              size: 56, color: AppColors.textSecondary.withOpacity(0.5)),
+          const SizedBox(height: 8),
+          Text('Aucune conversation',
+              style: TextStyle(color: AppColors.textSecondary)),
+        ]),
+      );
+    }
     return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      itemCount: convs.length,
+      separatorBuilder: (_, __) => const Divider(height: 1, indent: 80),
       itemBuilder: (_, i) {
         final c = convs[i];
         final last = c.messages.last;
         return ListTile(
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           leading: Stack(
             children: [
-              Avatar(url: c.peer.avatar, size: 48),
-              const Positioned(
-                bottom: 0,
-                right: 0,
-                child: CircleAvatar(
-                  radius: 6,
-                  backgroundColor: AppColors.success,
+              Avatar(url: c.peer.avatar, size: 52),
+              if (c.online)
+                Positioned(
+                  bottom: 1,
+                  right: 1,
+                  child: Container(
+                    width: 13,
+                    height: 13,
+                    decoration: BoxDecoration(
+                      color: AppColors.success,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                  ),
                 ),
-              ),
             ],
           ),
           title: Row(
             children: [
-              Text(
-                c.peer.name,
-                style: const TextStyle(fontWeight: FontWeight.w700),
+              Flexible(
+                child: Text(
+                  c.peer.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontWeight:
+                          c.unread > 0 ? FontWeight.w800 : FontWeight.w600),
+                ),
               ),
               const SizedBox(width: 4),
               VerifiedBadge(level: c.peer.verifiedLevel),
             ],
           ),
           subtitle: Text(
-            last.text,
+            '${last.fromMe ? 'Vous : ' : ''}${last.text}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                color: c.unread > 0
+                    ? AppColors.textPrimary
+                    : AppColors.textSecondary),
           ),
           trailing: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                timeAgo(last.at),
-                style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                timeAgo(last.at).replaceFirst('il y a ', ''),
+                style: TextStyle(
+                    fontSize: 11,
+                    color: c.unread > 0
+                        ? AppColors.primary
+                        : AppColors.textSecondary),
               ),
-              if (i == 0)
-                const Padding(
-                  padding: EdgeInsets.only(top: 4),
-                  child: CircleAvatar(
-                    radius: 10,
-                    backgroundColor: AppColors.primary,
-                    child: Text(
-                      '2',
-                      style: TextStyle(fontSize: 11, color: Colors.white),
-                    ),
-                  ),
-                ),
+              const SizedBox(height: 4),
+              if (c.unread > 0)
+                CircleAvatar(
+                  radius: 10,
+                  backgroundColor: AppColors.primary,
+                  child: Text('${c.unread}',
+                      style:
+                          const TextStyle(fontSize: 11, color: Colors.white)),
+                )
+              else if (last.fromMe)
+                const Icon(Icons.done_all, size: 16, color: AppColors.secondary),
             ],
           ),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => ChatScreen(peer: c.peer)),
-          ),
+          onTap: () => pushScreen(context, ChatScreen(peer: c.peer)),
         );
       },
-      separatorBuilder: (_, __) => const Divider(height: 1),
-      itemCount: convs.length,
     );
   }
 }

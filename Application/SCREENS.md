@@ -257,20 +257,28 @@ Les parcours **Annonceur** (UC-AN-01 → 08) et **Administrateur**
 
 `lib/data.dart::MockData` fournit :
 
-- **4 pros** : Aïcha Nkomo (Droit), Landry Mbappé (Gastronomie), Franck Talla
-  (Digital), Muna Etienne (Santé) — avec avatars/couvertures Unsplash mis
-  en cache par `cached_network_image`.
-- **4 posts** dont un sponsorisé et un avec galerie 2 images.
-- **7 services** couvrant les 4 types de tarification (`fixed`, `from`,
-  `quote`, plus `hourly` / `monthly` supportés par le modèle).
-- **3 lives** (1 en direct, 2 planifiés, 1 gratuit / 2 payants).
-- **5 commandes** (`MockData.orders()`) couvrant tous les statuts escrow :
-  en attente, en cours, livrée, terminée, litige.
-- **7 notifications** (`MockData.notifications()`) : live, commande,
-  message, paiement, abonnement, avis, sécurité.
-- **3 groupes** (`client/groups.dart::demoGroups`) : public, privé, payant.
-- **2 conversations** avec messages FR + EN mélangés (démo traduction).
-- **12 catégories** métier.
+Le jeu de données est volontairement fourni pour que chaque écran ressemble
+à une application en production (pas de listes à 2 éléments suivies d'un
+grand vide) :
+
+- **10 pros** couvrant 10 catégories (droit, gastronomie, tech, santé,
+  bâtiment, comptabilité, beauté, éducation, artisanat, marketing) à
+  Douala, Yaoundé, Bafoussam et Garoua. Portraits et images : Unsplash
+  (compatible CORS, donc aussi en web), mis en cache par
+  `cached_network_image`.
+- **8 posts** (sponsorisé, galerie 2 images, posts texte seul, annonce live).
+- **~20 services** : chaque pro a son propre catalogue, tous les types de
+  tarification (`fixed`, `from`, `quote`, `hourly`, `monthly`).
+- **5 lives** (2 en direct, 3 planifiés, gratuits et payants).
+- **8 conversations** avec compteur de non-lus, statut en ligne, archivée,
+  messages FR + EN mélangés (démo traduction).
+- **11 commandes** (`MockData.orders()`) couvrant tous les statuts escrow,
+  avec des clients nommés (`MockData.clients`).
+- **8 notifications**, **9 transactions** portefeuille, **5 avis**,
+  **6 réalisations** de portfolio, **3 groupes**, **12 catégories**.
+
+Le pro connecté en démo est **Me. Aïcha Nkomo** (`MockData.pros[0]`) ;
+l'internaute connecté est **Emmanuel Sakam** (`MockData.meAvatar`).
 
 Tous les prix passent par `formatXaf()` (`widgets/common.dart`), qui
 insère les espaces milliers et suffixe « XAF ».

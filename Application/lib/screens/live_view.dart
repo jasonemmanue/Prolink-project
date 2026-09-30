@@ -36,11 +36,13 @@ class _LiveViewScreenState extends State<LiveViewScreen> {
 
   String get _clock =>
       '${_elapsed ~/ 60}:${(_elapsed % 60).toString().padLeft(2, '0')}';
+  // Messages déjà préfixés par le nom de l'auteur.
   final List<String> _chat = [
-    '👋 Bienvenue tout le monde',
-    'Question : quel est le délai moyen d\'immatriculation ?',
-    '🙏 Merci pour ce live',
-    'Est-ce que vous acceptez les paiements en plusieurs fois ?',
+    'Grace F. : 👋 Bonsoir tout le monde',
+    'Paul N. : Quel est le délai moyen d\'immatriculation ?',
+    'Estelle K. : 🙏 Merci pour ce live, très clair',
+    'Yannick O. : Vous acceptez les paiements en plusieurs fois ?',
+    'Serge A. : 💰 a envoyé un pourboire de 1 000 XAF',
   ];
 
   @override
@@ -183,7 +185,7 @@ class _LiveViewScreenState extends State<LiveViewScreen> {
                       itemBuilder: (_, i) => Padding(
                         padding: const EdgeInsets.symmetric(vertical: 3),
                         child: Text(
-                          '👤 spectateur${i + 1} : ${_chat[i]}',
+                          _chat[i],
                           style: const TextStyle(color: Colors.white),
                         ),
                       ),
@@ -222,7 +224,7 @@ class _LiveViewScreenState extends State<LiveViewScreen> {
                         onPressed: () {
                           if (_c.text.trim().isEmpty) return;
                           setState(() {
-                            _chat.add(_c.text);
+                            _chat.add('Vous : ${_c.text}');
                             _c.clear();
                           });
                         },
