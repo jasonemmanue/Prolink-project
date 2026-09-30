@@ -20,7 +20,7 @@ from app.schemas import (
     CampaignOut, CategoryOut, DisputeOut, KycDocOut, LiveOut, MeOut, OrderOut, ReportOut,
     campaign_out, live_out, me_out, order_out,
 )
-from app.services import ledger
+from app.services import cache, ledger
 from app.services import orders as order_svc
 from app.services.notify import notify, notify_many
 from app.services.platform import audit, commission, get_setting, set_setting
@@ -36,6 +36,10 @@ def _ip(request: Request) -> str | None:
 
 @router.get("/dashboard")
 def dashboard(db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    return cache.cached("admin", "dashboard", 30, lambda: _dashboard(db))
+
+
+def _dashboard(db: Session) -> dict:
     now = utcnow()
     month = now - timedelta(days=30)
     n = lambda stmt: db.scalar(stmt) or 0  # noqa: E731
@@ -118,6 +122,7 @@ def suspend(uid: str, payload: ReasonIn, request: Request, db: Session = Depends
     u.is_active = False
     audit(db, admin.id, "user.suspend", "user", uid, {"reason": payload.reason}, _ip(request))
     db.commit()
+    cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
     return me_out(u)
 
 
@@ -130,6 +135,7 @@ def reactivate(uid: str, request: Request, db: Session = Depends(get_db),
     u.is_active = True
     audit(db, admin.id, "user.reactivate", "user", uid, {}, _ip(request))
     db.commit()
+    cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
     return me_out(u)
 
 
@@ -174,6 +180,7 @@ def kyc_decide(doc_id: str, payload: KycDecisionIn, request: Request, db: Sessio
     audit(db, admin.id, f"kyc.{payload.decision}", "kyc", doc.id,
           {"pro_id": doc.pro_id, "kind": doc.kind, "note": payload.note}, _ip(request))
     db.commit()
+    cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
     return doc
 
 
@@ -190,6 +197,7 @@ def set_verification(pid: str, payload: VerificationIn, request: Request, db: Se
     pro.verified_level = payload.level
     audit(db, admin.id, "pro.verification", "pro", pid, {"level": payload.level}, _ip(request))
     db.commit()
+    cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
     return {"pro_id": pid, "verified_level": pro.verified_level}
 
 
@@ -240,6 +248,7 @@ def resolve_report(rid: str, payload: ResolveReportIn, request: Request, db: Ses
     audit(db, admin.id, f"report.{payload.action}", r.target_type, r.target_id,
           {"report_id": r.id, "note": payload.note}, _ip(request))
     db.commit()
+    cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
     return r
 
 
@@ -262,6 +271,7 @@ def add_keyword(payload: KeywordIn, request: Request, db: Session = Depends(get_
     db.add(k)
     audit(db, admin.id, "keyword.add", "keyword", word, {}, _ip(request))
     db.commit()
+    cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
     return {"id": k.id, "word": k.word}
 
 
@@ -273,6 +283,7 @@ def delete_keyword(kid: int, request: Request, db: Session = Depends(get_db),
         audit(db, admin.id, "keyword.remove", "keyword", k.word, {}, _ip(request))
         db.delete(k)
         db.commit()
+        cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
 
 
 # ---------------------------------------------------------------- catégories
@@ -299,6 +310,7 @@ def create_category(payload: CategoryIn, request: Request, db: Session = Depends
     db.flush()
     audit(db, admin.id, "category.create", "category", str(c.id), payload.model_dump(), _ip(request))
     db.commit()
+    cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
     return c
 
 
@@ -312,6 +324,7 @@ def update_category(cid: int, payload: CategoryIn, request: Request, db: Session
         setattr(c, k, v)
     audit(db, admin.id, "category.update", "category", str(cid), payload.model_dump(), _ip(request))
     db.commit()
+    cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
     return c
 
 
@@ -331,6 +344,7 @@ def merge_categories(payload: MergeIn, request: Request, db: Session = Depends(g
     src.active = False
     audit(db, admin.id, "category.merge", "category", str(dst.id), payload.model_dump(), _ip(request))
     db.commit()
+    cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
     return dst
 
 
@@ -351,6 +365,7 @@ def write_setting(key: Literal["commissions", "plans", "sponsorship", "legal"], 
     merged = set_setting(db, key, value)
     audit(db, admin.id, f"settings.{key}", "settings", key, value, _ip(request))
     db.commit()
+    cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
     return merged
 
 
@@ -399,6 +414,7 @@ def resolve_dispute(did: str, payload: ResolveDisputeIn, request: Request, db: S
     audit(db, admin.id, f"dispute.{payload.resolution}", "order", o.id,
           {"dispute_id": d.id, "refund_xaf": d.refund_xaf, "note": payload.note}, _ip(request))
     db.commit()
+    cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
     return d
 
 
@@ -421,6 +437,7 @@ def manual_release(oid: str, payload: ReasonIn, request: Request, db: Session = 
     order_svc.complete(db, o)
     audit(db, admin.id, "order.release_manual", "order", o.id, {"reason": payload.reason}, _ip(request))
     db.commit()
+    cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
     return order_out(o)
 
 
@@ -433,6 +450,7 @@ def manual_refund(oid: str, payload: ReasonIn, request: Request, db: Session = D
     order_svc.refund(db, o, payload.reason)
     audit(db, admin.id, "order.refund_manual", "order", o.id, {"reason": payload.reason}, _ip(request))
     db.commit()
+    cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
     return order_out(o)
 
 
@@ -441,6 +459,7 @@ def run_auto_release(request: Request, db: Session = Depends(get_db), admin: Use
     n = order_svc.release_due_orders(db)
     audit(db, admin.id, "order.auto_release_run", None, None, {"released": n}, _ip(request))
     db.commit()
+    cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
     return {"released": n}
 
 
@@ -462,6 +481,7 @@ def cut_live(lid: str, payload: ReasonIn, request: Request, db: Session = Depend
     notify(db, lv.pro_id, "system", "Live interrompu par la modération", payload.reason, {"live_id": lid})
     audit(db, admin.id, "live.cut", "live", lid, {"reason": payload.reason}, _ip(request))
     db.commit()
+    cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
     return live_out(lv, True)
 
 
@@ -497,6 +517,7 @@ def review_campaign(cid: str, payload: CampaignReviewIn, request: Request, db: S
     audit(db, admin.id, "campaign.approve" if payload.approve else "campaign.reject", "campaign", c.id,
           {"note": payload.note}, _ip(request))
     db.commit()
+    cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
     return campaign_out(c)
 
 
@@ -523,6 +544,7 @@ def broadcast(payload: BroadcastIn, request: Request, db: Session = Depends(get_
     audit(db, admin.id, "notification.broadcast", "segment", payload.segment,
           {"title": payload.title, "recipients": sent}, _ip(request))
     db.commit()
+    cache.invalidate("pros", "feed", "lives", "services", "categories", "settings", "admin")
     return {"recipients": sent}
 
 

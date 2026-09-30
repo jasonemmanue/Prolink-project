@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../api/session.dart';
 import '../../data.dart';
 import '../../models.dart';
 import '../../theme.dart';
@@ -64,10 +65,10 @@ Future<void> showTicketSheet(BuildContext context, LiveEvent live) {
                 style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
               ),
               const SectionLabel('Payer avec'),
-              for (final m in const [
+              for (final m in [
                 (
                   'wallet',
-                  'Portefeuille ProLink · 45 000 XAF',
+                  'Portefeuille ProLink · ${formatXaf(Session.instance.balanceXaf)}',
                   Icons.account_balance_wallet,
                 ),
                 ('mtn', 'MTN Mobile Money', Icons.phone_android),
@@ -92,12 +93,30 @@ Future<void> showTicketSheet(BuildContext context, LiveEvent live) {
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.confirmation_number_outlined),
                   label: Text('Acheter · ${formatXaf(live.priceXaf)}'),
-                  onPressed: () {
+                  onPressed: () async {
                     Navigator.pop(ctx);
+                    final s = Session.instance;
+                    if (s.online && method != 'wallet') {
+                      // Mobile Money : on crédite d'abord le portefeuille.
+                      final top = await apiCall<bool>(context, (api) async {
+                        await api.post('/wallet/topup',
+                            {'amount_xaf': live.priceXaf, 'method': method});
+                        return true;
+                      });
+                      if (top != true) return;
+                    }
+                    if (!context.mounted) return;
+                    final ok = await apiCall<bool>(context, (api) async {
+                      await api.post('/lives/${live.id}/ticket');
+                      return true;
+                    }, demo: true);
+                    if (ok != true || !context.mounted) return;
                     showInfo(
                       context,
                       'Billet confirmé ! Vous serez notifié 15 min avant le live.',
                     );
+                    await s.afterMoneyAction();
+                    if (s.online) await s.refreshLives();
                   },
                 ),
               ),

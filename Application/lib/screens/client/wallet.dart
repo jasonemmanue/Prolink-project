@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../api/session.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
 import '../shared/wallet_actions.dart';
@@ -8,8 +10,33 @@ class WalletScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final session = context.watch<Session>();
+    final txs = session.online
+        ? [
+            for (final t in session.transactions)
+              (
+                txLabel(t['kind'] as String),
+                t['label'] as String,
+                t['amount_xaf'] as int,
+                timeAgo(DateTime.parse(t['created_at']).toLocal()) +
+                    (t['status'] == 'pending' ? ' · en attente' : ''),
+                t['reference'] as String,
+              ),
+          ]
+        : [
+            for (final (i, t) in _transactions.indexed)
+              (t.$1, t.$2, t.$3, t.$4, 'P${100231 - i * 7}'),
+          ];
+    final tickets = session.online
+        ? session.transactions.where((t) => t['kind'] == 'ticket').length
+        : 3;
     return SafeArea(
-      child: CustomScrollView(
+      child: RefreshIndicator(
+        onRefresh: () async {
+          if (session.online) await session.refreshWallet();
+        },
+        child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           SliverAppBar(
             floating: true,
@@ -44,9 +71,9 @@ class WalletScreen extends StatelessWidget {
                       style: TextStyle(color: Colors.white70),
                     ),
                     const SizedBox(height: 6),
-                    const Text(
-                      '45 000 XAF',
-                      style: TextStyle(
+                    Text(
+                      formatXaf(session.balanceXaf),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 32,
                         fontWeight: FontWeight.w800,
@@ -75,10 +102,15 @@ class WalletScreen extends StatelessWidget {
                               foregroundColor: AppColors.primary,
                             ),
                             // Retrait limité aux comptes pro (§8.1.7).
-                            onPressed: () => showInfo(
-                              context,
-                              'Le retrait est réservé aux comptes professionnels.',
-                            ),
+                            onPressed: () => session.isPro
+                                ? pushScreen(
+                                    context,
+                                    WithdrawScreen(availableXaf: session.balanceXaf),
+                                  )
+                                : showInfo(
+                                    context,
+                                    'Le retrait est réservé aux comptes professionnels.',
+                                  ),
                             icon: const Icon(Icons.download),
                             label: const Text('Retirer'),
                           ),
@@ -99,7 +131,7 @@ class WalletScreen extends StatelessWidget {
                     child: _MetricTile(
                       icon: Icons.lock,
                       title: 'En séquestre',
-                      value: '250 000',
+                      value: formatXaf(session.escrowXaf),
                       color: AppColors.accent,
                     ),
                   ),
@@ -108,7 +140,7 @@ class WalletScreen extends StatelessWidget {
                     child: _MetricTile(
                       icon: Icons.confirmation_number,
                       title: 'Billets',
-                      value: '3',
+                      value: '$tickets',
                       color: AppColors.secondary,
                     ),
                   ),
@@ -138,9 +170,9 @@ class WalletScreen extends StatelessWidget {
             ),
           ),
           SliverList.builder(
-            itemCount: _transactions.length,
+            itemCount: txs.length,
             itemBuilder: (_, i) {
-              final (t, detail, amount, date) = _transactions[i];
+              final (t, detail, amount, date, ref) = txs[i];
               final positive = amount > 0;
               return ListTile(
                 leading: CircleAvatar(
@@ -154,7 +186,7 @@ class WalletScreen extends StatelessWidget {
                 ),
                 title: Text(t),
                 subtitle: Text(
-                  '$detail\n$date · Réf #P${100231 - i * 7}',
+                  '$detail\n$date · Réf $ref',
                   style: const TextStyle(fontSize: 12),
                 ),
                 isThreeLine: true,
@@ -168,11 +200,37 @@ class WalletScreen extends StatelessWidget {
               );
             },
           ),
+          if (txs.isEmpty)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: Center(child: Text('Aucune transaction pour le moment')),
+              ),
+            ),
         ],
+        ),
       ),
     );
   }
 }
+
+/// Libellé lisible d'un type de transaction de l'API.
+String txLabel(String kind) => switch (kind) {
+  'topup' => 'Rechargement',
+  'withdraw' => 'Retrait',
+  'order_payment' => 'Achat prestation',
+  'order_payout' => 'Prestation encaissée',
+  'refund' => 'Remboursement',
+  'commission' => 'Commission ProLink',
+  'ticket' => 'Billet live',
+  'ticket_payout' => 'Billet vendu',
+  'tip' => 'Pourboire',
+  'tip_payout' => 'Pourboire reçu',
+  'group_payout' => 'Abonnement groupe',
+  'subscription' => 'Abonnement',
+  'sponsorship' => 'Sponsorisation',
+  _ => kind,
+};
 
 /// Historique de démo : (type, détail, montant signé, date).
 const _transactions = [

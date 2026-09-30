@@ -20,9 +20,24 @@ class ServiceDetailScreen extends StatefulWidget {
 
 class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   int _variant = 1;
+
+  /// Formules du serveur, ou Basic/Standard/Premium en démo.
+  List<ServiceVariant> get _variants {
+    final s = widget.service;
+    if (s.variants.isNotEmpty) return s.variants;
+    if (s.proId.isNotEmpty) return const []; // service API sans formules
+    return [
+      ServiceVariant('Basic', s.priceXaf),
+      ServiceVariant('Standard', s.priceXaf * 2),
+      ServiceVariant('Premium', s.priceXaf * 3),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final variants = ['Basic', 'Standard', 'Premium'];
+    final variants = _variants;
+    if (_variant >= variants.length) _variant = variants.isEmpty ? 0 : variants.length - 1;
+    final isQuote = widget.service.pricingType == 'quote';
     return Scaffold(
       appBar: AppBar(title: Text(widget.service.title)),
       body: ListView(
@@ -68,17 +83,35 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             ],
           ),
           const SizedBox(height: 20),
+          if (variants.isEmpty)
+            Row(children: [
+              Text(
+                isQuote ? 'Tarif sur devis' : 'Prix',
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+              ),
+              const Spacer(),
+              if (!isQuote)
+                Text(
+                  formatXaf(widget.service.priceXaf),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                    color: AppColors.primary,
+                  ),
+                ),
+            ])
+          else ...[
           const Text(
             'Choisissez votre formule',
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
           ),
           const SizedBox(height: 8),
           Row(
-            children: List.generate(3, (i) {
+            children: List.generate(variants.length, (i) {
               final selected = _variant == i;
               return Expanded(
                 child: Padding(
-                  padding: EdgeInsets.only(right: i < 2 ? 8 : 0),
+                  padding: EdgeInsets.only(right: i < variants.length - 1 ? 8 : 0),
                   child: InkWell(
                     onTap: () => setState(() => _variant = i),
                     borderRadius: BorderRadius.circular(12),
@@ -99,19 +132,12 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                       child: Column(
                         children: [
                           Text(
-                            variants[i],
+                            variants[i].name,
                             style: const TextStyle(fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            formatXaf(
-                              widget.service.priceXaf *
-                                  (i == 0
-                                      ? 1
-                                      : i == 1
-                                      ? 2
-                                      : 3),
-                            ),
+                            formatXaf(variants[i].priceXaf),
                             style: const TextStyle(fontSize: 12),
                           ),
                         ],
@@ -122,14 +148,17 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
               );
             }),
           ),
+          ],
           const SizedBox(height: 24),
           _Section(
             title: 'Livrables',
-            items: const [
-              '3 versions du document',
-              'Support pendant 30 jours',
-              'Consultation de suivi',
-            ],
+            items: widget.service.deliverables.isNotEmpty
+                ? widget.service.deliverables
+                : const [
+                    '3 versions du document',
+                    'Support pendant 30 jours',
+                    'Consultation de suivi',
+                  ],
           ),
           const SizedBox(height: 16),
           _Section(
@@ -166,15 +195,18 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
               Expanded(
                 flex: 2,
                 child: ElevatedButton.icon(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => OrderFlowScreen(
-                        pro: widget.pro,
-                        service: widget.service,
-                      ),
-                    ),
-                  ),
+                  onPressed: isQuote
+                      ? null
+                      : () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => OrderFlowScreen(
+                              pro: widget.pro,
+                              service: widget.service,
+                              variant: variants.isEmpty ? null : variants[_variant],
+                            ),
+                          ),
+                        ),
                   icon: const Icon(Icons.shopping_bag_outlined),
                   label: const Text('Commander'),
                 ),

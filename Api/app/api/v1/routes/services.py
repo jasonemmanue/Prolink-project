@@ -9,6 +9,8 @@ from app.schemas import (
     QuoteIn, QuoteOut, QuoteReplyIn, ReorderIn, ServiceIn, ServiceOut, ServiceUpdate, quote_out,
     service_out,
 )
+from app.core.config import settings
+from app.services import cache
 from app.services.notify import notify
 from app.services.platform import get_setting
 
@@ -34,6 +36,12 @@ def search_services(
     page: Page = Depends(),
     db: Session = Depends(get_db),
 ):
+    key = f"search:{q}:{category}:{pro_id}:{max_price}:{pricing_type}:{page.limit}:{page.offset}"
+    return cache.cached("services", key, settings.cache_ttl_seconds, lambda: _search(
+        db, q, category, pro_id, max_price, pricing_type, page))
+
+
+def _search(db, q, category, pro_id, max_price, pricing_type, page) -> list[ServiceOut]:
     stmt = select(Service).where(Service.status == "active")
     if q:
         like = f"%{q.lower()}%"
@@ -72,6 +80,7 @@ def create_service(payload: ServiceIn, db: Session = Depends(get_db), user: User
     s = Service(pro_id=user.id, position=pos, **payload.model_dump())
     db.add(s)
     db.commit()
+    cache.invalidate("services")
     db.refresh(s)
     return service_out(s)
 
@@ -83,6 +92,7 @@ def update_service(sid: str, payload: ServiceUpdate, db: Session = Depends(get_d
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(s, k, v)
     db.commit()
+    cache.invalidate("services")
     return service_out(s)
 
 
@@ -91,6 +101,7 @@ def delete_service(sid: str, db: Session = Depends(get_db), user: User = Depends
     s = _own(db, sid, user)
     db.delete(s)
     db.commit()
+    cache.invalidate("services")
 
 
 @router.post("/services/reorder", response_model=list[ServiceOut])
@@ -99,6 +110,7 @@ def reorder(payload: ReorderIn, db: Session = Depends(get_db), user: User = Depe
     for i, sid in enumerate(payload.ids):
         _own(db, sid, user).position = i
     db.commit()
+    cache.invalidate("services")
     rows = db.scalars(select(Service).where(Service.pro_id == user.id).order_by(Service.position)).all()
     return [service_out(s) for s in rows]
 

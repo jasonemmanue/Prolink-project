@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../api/session.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
 import 'live_studio.dart';
@@ -12,6 +13,9 @@ class ProLiveBroadcastScreen extends StatefulWidget {
 
 class _ProLiveBroadcastScreenState extends State<ProLiveBroadcastScreen> {
   final _title = TextEditingController();
+  final _desc = TextEditingController();
+  final _price = TextEditingController();
+  bool _busy = false;
   String _mode = 'free';
   DateTime? _date;
   TimeOfDay? _time;
@@ -78,9 +82,10 @@ class _ProLiveBroadcastScreenState extends State<ProLiveBroadcastScreen> {
                   decoration: const InputDecoration(labelText: 'Titre du live'),
                 ),
                 const SizedBox(height: 10),
-                const TextField(
+                TextField(
+                  controller: _desc,
                   maxLines: 3,
-                  decoration: InputDecoration(labelText: 'Description'),
+                  decoration: const InputDecoration(labelText: 'Description'),
                 ),
                 const SizedBox(height: 10),
                 Row(
@@ -138,9 +143,10 @@ class _ProLiveBroadcastScreenState extends State<ProLiveBroadcastScreen> {
                 ),
                 if (_mode == 'paid') ...[
                   const SizedBox(height: 8),
-                  const TextField(
+                  TextField(
+                    controller: _price,
                     keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                       labelText: 'Prix du billet',
                       suffixText: 'XAF',
                     ),
@@ -150,7 +156,7 @@ class _ProLiveBroadcastScreenState extends State<ProLiveBroadcastScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: _go,
+                    onPressed: _busy ? null : _go,
                     icon: Icon(
                       _scheduled ? Icons.event_available : Icons.play_arrow,
                     ),
@@ -186,7 +192,32 @@ class _ProLiveBroadcastScreenState extends State<ProLiveBroadcastScreen> {
     if (t != null) setState(() => _time = t);
   }
 
-  void _go() {
+  Future<void> _go() async {
+    if (_title.text.trim().length < 3) {
+      showInfo(context, 'Donnez un titre au live (3 caractères minimum)');
+      return;
+    }
+    DateTime? at;
+    if (_scheduled) {
+      final t = _time ?? const TimeOfDay(hour: 18, minute: 0);
+      at = DateTime(_date!.year, _date!.month, _date!.day, t.hour, t.minute);
+    }
+    setState(() => _busy = true);
+    final live = await apiCall<Map>(
+      context,
+      (api) async => await api.post('/lives', {
+        'title': _title.text.trim(),
+        'description': _desc.text.trim(),
+        'mode': _mode,
+        'price_xaf': _mode == 'paid' ? (int.tryParse(_price.text.replaceAll(' ', '')) ?? 0) : 0,
+        if (at != null) 'scheduled_at': at.toUtc().toIso8601String(),
+      }) as Map,
+      demo: const {'id': 'demo'},
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (live == null) return;
+    if (Session.instance.online) Session.instance.refreshLives();
     if (_scheduled) {
       showInfo(
         context,
@@ -196,7 +227,7 @@ class _ProLiveBroadcastScreenState extends State<ProLiveBroadcastScreen> {
     }
     pushScreen(
       context,
-      LivePrecheckScreen(title: _title.text.trim(), mode: _mode),
+      LivePrecheckScreen(title: _title.text.trim(), mode: _mode, liveId: live['id']),
     );
   }
 }

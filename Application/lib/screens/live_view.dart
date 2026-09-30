@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../api/api_client.dart';
+import '../api/session.dart';
 import '../models.dart';
+import 'client/tickets.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
@@ -18,6 +21,9 @@ class _LiveViewScreenState extends State<LiveViewScreen> {
   int _elapsed = 23 * 60 + 12;
   bool _following = false;
 
+  int? _viewers;
+  bool _joined = false;
+
   @override
   void initState() {
     super.initState();
@@ -25,12 +31,46 @@ class _LiveViewScreenState extends State<LiveViewScreen> {
       const Duration(seconds: 1),
       (_) => setState(() => _elapsed++),
     );
+    if (Session.instance.online) _join();
+  }
+
+  /// Demande un jeton LiveKit : le serveur vérifie billet / abonnement.
+  /// (La vidéo LiveKit sera branchée avec le SDK ; le jeton est déjà prêt.)
+  Future<void> _join() async {
+    try {
+      await Session.instance.api.post('/lives/${widget.live.id}/token');
+      _joined = true;
+      final live = await Session.instance.api.get('/lives/${widget.live.id}');
+      final started = live['started_at'];
+      if (!mounted) return;
+      setState(() {
+        _viewers = live['viewers'];
+        if (started != null) {
+          _elapsed = DateTime.now()
+              .difference(DateTime.parse(started).toLocal())
+              .inSeconds
+              .clamp(0, 1 << 30);
+        }
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.status == 402 && widget.live.paying) {
+        Navigator.pop(context);
+        showTicketSheet(context, widget.live);
+      } else {
+        showInfo(context, e.message);
+        Navigator.pop(context);
+      }
+    }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     _c.dispose();
+    if (_joined) {
+      Session.instance.api.post('/lives/${widget.live.id}/leave').catchError((_) {});
+    }
     super.dispose();
   }
 
@@ -87,7 +127,7 @@ class _LiveViewScreenState extends State<LiveViewScreen> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '${widget.live.viewers}',
+                        '${_viewers ?? widget.live.viewers}',
                         style: const TextStyle(color: Colors.white),
                       ),
                       const SizedBox(width: 10),
@@ -115,7 +155,12 @@ class _LiveViewScreenState extends State<LiveViewScreen> {
                           Icons.flag_outlined,
                           color: Colors.white,
                         ),
-                        onPressed: () => showReportSheet(context, 'ce live'),
+                        onPressed: () => showReportSheet(
+                          context,
+                          'ce live',
+                          type: 'live',
+                          id: widget.live.id,
+                        ),
                       ),
                       IconButton(
                         tooltip: 'Quitter',
@@ -273,13 +318,20 @@ class _LiveViewScreenState extends State<LiveViewScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: () {
+                    onPressed: () async {
                       Navigator.pop(ctx);
+                      final ok = await apiCall<bool>(context, (api) async {
+                        await api.post('/lives/${widget.live.id}/tip',
+                            {'amount_xaf': amount});
+                        return true;
+                      }, demo: true);
+                      if (ok != true || !mounted) return;
                       setState(
                         () => _chat.add(
                           '💰 Vous avez envoyé ${formatXaf(amount!)}',
                         ),
                       );
+                      Session.instance.afterMoneyAction();
                     },
                     icon: const Icon(Icons.send),
                     label: Text('Envoyer ${formatXaf(amount!)}'),

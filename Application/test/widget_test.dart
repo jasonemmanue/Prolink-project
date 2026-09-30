@@ -1,13 +1,20 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:prolink/api/session.dart';
 import 'package:prolink/l10n.dart';
 import 'package:prolink/main.dart';
 
 void main() {
   testWidgets('ProLink app boots', (WidgetTester tester) async {
+    // Aucune session mémorisée → onboarding.
+    SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(
-      ChangeNotifierProvider(
-        create: (_) => AppLocale(),
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => AppLocale()),
+          ChangeNotifierProvider.value(value: Session.instance),
+        ],
         child: const ProLinkApp(),
       ),
     );

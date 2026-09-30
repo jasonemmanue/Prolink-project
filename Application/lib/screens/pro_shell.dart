@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../api/session.dart';
+import '../data.dart';
+import '../models.dart';
 import '../theme.dart';
 import 'pro/dashboard.dart';
 import 'pro/publish.dart';
@@ -25,6 +29,11 @@ class _ProShellState extends State<ProShell> {
 
   @override
   Widget build(BuildContext context) {
+    final session = context.watch<Session>();
+    final meId = session.online ? session.userId : MockData.pros[0].id;
+    final todo = MockData.orders()
+        .where((o) => o.pro.id == meId && o.status == OrderStatus.pending)
+        .length;
     return Scaffold(
       body: _pages[_idx],
       floatingActionButton: _idx == 0
@@ -40,25 +49,27 @@ class _ProShellState extends State<ProShell> {
         selectedIndex: _idx,
         onDestinationSelected: (i) => setState(() => _idx = i),
         indicatorColor: AppColors.primary.withOpacity(0.10),
-        destinations: const [
-          NavigationDestination(
+        destinations: [
+          const NavigationDestination(
               icon: Icon(Icons.dashboard_outlined),
               selectedIcon: Icon(Icons.dashboard),
               label: 'Tableau'),
           NavigationDestination(
               icon: Badge(
-                  label: Text('4'), child: Icon(Icons.receipt_long_outlined)),
-              selectedIcon: Icon(Icons.receipt_long),
+                  isLabelVisible: todo > 0,
+                  label: Text('$todo'),
+                  child: const Icon(Icons.receipt_long_outlined)),
+              selectedIcon: const Icon(Icons.receipt_long),
               label: 'Commandes'),
-          NavigationDestination(
+          const NavigationDestination(
               icon: Icon(Icons.storefront_outlined),
               selectedIcon: Icon(Icons.storefront),
               label: 'Catalogue'),
-          NavigationDestination(
+          const NavigationDestination(
               icon: Icon(Icons.podcasts_outlined),
               selectedIcon: Icon(Icons.podcasts),
               label: 'Live'),
-          NavigationDestination(
+          const NavigationDestination(
               icon: Icon(Icons.payments_outlined),
               selectedIcon: Icon(Icons.payments),
               label: 'Finances'),

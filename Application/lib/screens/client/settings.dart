@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../api/session.dart';
 import '../../data.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
@@ -114,7 +115,7 @@ class SecurityScreen extends StatefulWidget {
 }
 
 class _SecurityScreenState extends State<SecurityScreen> {
-  bool _twoFa = false;
+  bool _twoFa = Session.instance.twoFaEnabled;
   bool _biometric = true;
   bool _privateProfile = false;
   final _sessions = [
@@ -167,12 +168,27 @@ class _SecurityScreenState extends State<SecurityScreen> {
                   ),
                   value: _twoFa,
                   onChanged: (v) async {
-                    if (v) {
-                      final ok = await _confirmOtp(context);
-                      if (ok == true) setState(() => _twoFa = true);
-                    } else {
-                      setState(() => _twoFa = false);
+                    final s = Session.instance;
+                    String? devCode;
+                    if (s.online) {
+                      final r = await apiCall<Map>(
+                        context,
+                        (api) async => await api.post('/auth/otp/send',
+                            {'target': '-', 'purpose': '2fa'}) as Map,
+                      );
+                      if (r == null) return;
+                      devCode = r['dev_code'];
                     }
+                    if (!context.mounted) return;
+                    final code = await _confirmOtp(context, devCode);
+                    if (code == null || !context.mounted) return;
+                    final ok = await apiCall<bool>(context, (api) async {
+                      await api.post(v ? '/auth/2fa/enable' : '/auth/2fa/disable',
+                          {'target': '-', 'purpose': '2fa', 'code': code});
+                      await s.refreshMe();
+                      return true;
+                    }, demo: true);
+                    if (ok == true && mounted) setState(() => _twoFa = v);
                   },
                 ),
                 SwitchListTile(
@@ -279,32 +295,34 @@ class _SecurityScreenState extends State<SecurityScreen> {
     );
   }
 
-  Future<bool?> _confirmOtp(BuildContext context) {
-    return showDialog<bool>(
+  Future<String?> _confirmOtp(BuildContext context, String? devCode) {
+    final c = TextEditingController(text: devCode ?? '');
+    return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Vérification'),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Saisissez le code à 6 chiffres reçu par SMS.'),
-            SizedBox(height: 12),
+            const Text('Saisissez le code à 6 chiffres reçu par SMS.'),
+            const SizedBox(height: 12),
             TextField(
+              controller: c,
               keyboardType: TextInputType.number,
               maxLength: 6,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 22, letterSpacing: 8),
-              decoration: InputDecoration(counterText: '', hintText: '••••••'),
+              style: const TextStyle(fontSize: 22, letterSpacing: 8),
+              decoration: const InputDecoration(counterText: '', hintText: '••••••'),
             ),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
+            onPressed: () => Navigator.pop(ctx),
             child: const Text('Annuler'),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: () => Navigator.pop(ctx, c.text.trim()),
             child: const Text('Valider'),
           ),
         ],
@@ -314,19 +332,56 @@ class _SecurityScreenState extends State<SecurityScreen> {
 }
 
 /// Édition des informations personnelles (§8.1.8).
-class EditProfileScreen extends StatelessWidget {
+class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
   @override
+  State<EditProfileScreen> createState() => _EditProfileScreenState();
+}
+
+class _EditProfileScreenState extends State<EditProfileScreen> {
+  final _me = Session.instance.me ?? const {};
+  late final _name = TextEditingController(
+      text: Session.instance.online ? _me['name'] : 'Emmanuel Sakam');
+  late final _city = TextEditingController(
+      text: Session.instance.online ? (_me['city'] ?? '') : 'Douala');
+  late final _address = TextEditingController(
+      text: Session.instance.online ? (_me['address'] ?? '') : 'Akwa, rue Joss');
+  late final Set<String> _langs = {
+    for (final l in (Session.instance.online
+        ? List<String>.from(_me['languages'] ?? const ['FR'])
+        : const ['FR', 'EN']))
+      l,
+  };
+  bool _busy = false;
+
+  Future<void> _save() async {
+    setState(() => _busy = true);
+    final ok = await apiCall<bool>(context, (api) async {
+      await api.patch('/auth/me', {
+        'name': _name.text.trim(),
+        'city': _city.text.trim(),
+        'address': _address.text.trim(),
+        'languages': _langs.toList(),
+      });
+      await Session.instance.refreshMe();
+      return true;
+    }, demo: true);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (ok != true) return;
+    Navigator.pop(context);
+    showInfo(context, 'Profil mis à jour');
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final online = Session.instance.online;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Modifier le profil'),
         actions: [
           TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              showInfo(context, 'Profil mis à jour');
-            },
+            onPressed: _busy ? null : _save,
             child: const Text('Enregistrer'),
           ),
         ],
@@ -337,38 +392,37 @@ class EditProfileScreen extends StatelessWidget {
           Center(
             child: Stack(
               children: [
-                Avatar(url: MockData.meAvatar, size: 96),
-                Positioned(
+                Avatar(url: Session.instance.avatar, size: 96),
+                const Positioned(
                   right: 0,
                   bottom: 0,
                   child: CircleAvatar(
                     radius: 16,
                     backgroundColor: AppColors.primary,
-                    child: const Icon(
-                      Icons.camera_alt,
-                      size: 16,
-                      color: Colors.white,
-                    ),
+                    child: Icon(Icons.camera_alt, size: 16, color: Colors.white),
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 20),
-          _field('Nom complet', 'Emmanuel Sakam', Icons.person_outline),
-          _field('Téléphone', '+237 6 90 00 00 42', Icons.phone_outlined),
-          _field('E-mail', 'emmanuel@exemple.cm', Icons.mail_outline),
-          _field('Ville', 'Douala', Icons.location_city_outlined),
-          _field('Quartier / adresse', 'Akwa, rue Joss', Icons.home_outlined),
+          _field('Nom complet', _name, Icons.person_outline),
+          _readOnly('Téléphone',
+              online ? (_me['phone'] ?? '—') : '+237 6 90 00 00 42', Icons.phone_outlined),
+          _readOnly('E-mail',
+              online ? (_me['email'] ?? '—') : 'emmanuel@exemple.cm', Icons.mail_outline),
+          _field('Ville', _city, Icons.location_city_outlined),
+          _field('Quartier / adresse', _address, Icons.home_outlined),
           const SectionLabel('Langues parlées'),
           Wrap(
             spacing: 8,
             children: [
-              for (final l in ['Français', 'English', 'Duala', 'Ewondo'])
+              for (final l in const [('FR', 'Français'), ('EN', 'English')])
                 FilterChip(
-                  label: Text(l),
-                  selected: l == 'Français' || l == 'English',
-                  onSelected: (_) {},
+                  label: Text(l.$2),
+                  selected: _langs.contains(l.$1),
+                  onSelected: (v) =>
+                      setState(() => v ? _langs.add(l.$1) : _langs.remove(l.$1)),
                 ),
             ],
           ),
@@ -390,10 +444,19 @@ class EditProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _field(String label, String value, IconData icon) => Padding(
+  Widget _field(String label, TextEditingController c, IconData icon) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: TextField(
+      controller: c,
+      decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
+    ),
+  );
+
+  Widget _readOnly(String label, String value, IconData icon) => Padding(
     padding: const EdgeInsets.only(bottom: 12),
     child: TextFormField(
       initialValue: value,
+      enabled: false,
       decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
     ),
   );

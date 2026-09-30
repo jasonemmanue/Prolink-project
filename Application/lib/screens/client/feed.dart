@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart';
+import '../../api/session.dart';
 import '../../data.dart';
 import '../../models.dart';
 import '../../theme.dart';
@@ -15,10 +17,22 @@ class FeedScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final session = context.watch<Session>();
     final posts = MockData.feed();
     final lives = MockData.lives().where((l) => l.isLive).toList();
+    final unread = MockData.notifications().where((n) => !n.read).length;
     return SafeArea(
-      child: CustomScrollView(
+      child: RefreshIndicator(
+        onRefresh: () async {
+          if (!session.online) return;
+          await Future.wait([
+            session.refreshFeed(),
+            session.refreshLives(),
+            session.refreshNotifications(),
+          ]);
+        },
+        child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           SliverAppBar(
             floating: true,
@@ -26,9 +40,10 @@ class FeedScreen extends StatelessWidget {
             title: const AppLogo(size: 34),
             actions: [
               IconButton(
-                icon: const Badge(
-                  label: Text('12'),
-                  child: Icon(Icons.notifications_outlined),
+                icon: Badge(
+                  isLabelVisible: unread > 0,
+                  label: Text('$unread'),
+                  child: const Icon(Icons.notifications_outlined),
                 ),
                 onPressed: () =>
                     pushScreen(context, const NotificationsScreen()),
@@ -53,8 +68,18 @@ class FeedScreen extends StatelessWidget {
             itemCount: posts.length,
             itemBuilder: (_, i) => _PostCard(post: posts[i]),
           ),
+          if (posts.isEmpty)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: Center(
+                  child: Text('Suivez des pros pour remplir votre fil.'),
+                ),
+              ),
+            ),
           const SliverToBoxAdapter(child: SizedBox(height: 20)),
         ],
+        ),
       ),
     );
   }
@@ -269,7 +294,12 @@ class _PostCard extends StatelessWidget {
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.more_horiz),
                   onSelected: (v) => v == 'report'
-                      ? showReportSheet(context, 'cette publication')
+                      ? showReportSheet(
+                          context,
+                          'cette publication',
+                          type: 'post',
+                          id: post.id,
+                        )
                       : showInfo(
                           context,
                           v == 'hide' ? 'Publication masquée' : 'Lien copié',
@@ -327,7 +357,7 @@ class _PostCard extends StatelessWidget {
             const SizedBox(height: 10),
             Row(
               children: [
-                _LikeButton(count: post.likes),
+                _LikeButton(post: post),
                 _Action(
                   Icons.mode_comment_outlined,
                   '${post.comments}',
@@ -340,11 +370,7 @@ class _PostCard extends StatelessWidget {
                   onTap: () => showInfo(context, 'Lien de partage copié'),
                 ),
                 const Spacer(),
-                _Action(
-                  Icons.bookmark_border,
-                  '',
-                  onTap: () => showInfo(context, 'Enregistré dans vos favoris'),
-                ),
+                _SaveButton(post: post),
               ],
             ),
           ],
@@ -376,29 +402,90 @@ class _Action extends StatelessWidget {
 }
 
 class _LikeButton extends StatefulWidget {
-  final int count;
-  const _LikeButton({required this.count});
+  final Post post;
+  const _LikeButton({required this.post});
   @override
   State<_LikeButton> createState() => _LikeButtonState();
 }
 
 class _LikeButtonState extends State<_LikeButton> {
-  bool _liked = false;
+  late bool _liked = widget.post.liked;
+  late int _count = widget.post.likes;
+
+  Future<void> _toggle() async {
+    final was = _liked;
+    setState(() {
+      _liked = !was;
+      _count += was ? -1 : 1;
+    });
+    final ok = await apiCall<bool>(context, (api) async {
+      final path = '/posts/${widget.post.id}/like';
+      final r = was ? await api.delete(path) : await api.post(path);
+      if (mounted) setState(() => _count = r['likes_count']);
+      return true;
+    }, demo: true);
+    if (ok != true && mounted) {
+      setState(() {
+        _liked = was;
+        _count += was ? 1 : -1;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return TextButton.icon(
-      onPressed: () => setState(() => _liked = !_liked),
+      onPressed: _toggle,
       icon: Icon(
         _liked ? Icons.favorite : Icons.favorite_border,
         size: 18,
         color: _liked ? AppColors.danger : AppColors.textSecondary,
       ),
       label: Text(
-        '${widget.count + (_liked ? 1 : 0)}',
+        '$_count',
         style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
       ),
       style: TextButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 8),
+      ),
+    );
+  }
+}
+
+class _SaveButton extends StatefulWidget {
+  final Post post;
+  const _SaveButton({required this.post});
+  @override
+  State<_SaveButton> createState() => _SaveButtonState();
+}
+
+class _SaveButtonState extends State<_SaveButton> {
+  late bool _saved = widget.post.saved;
+
+  Future<void> _toggle() async {
+    final was = _saved;
+    setState(() => _saved = !was);
+    final ok = await apiCall<bool>(
+      context,
+      (api) async {
+        final path = '/posts/${widget.post.id}/save';
+        was ? await api.delete(path) : await api.post(path);
+        return true;
+      },
+      demo: true,
+      success: was ? null : 'Enregistré dans vos favoris',
+    );
+    if (ok != true && mounted) setState(() => _saved = was);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: _toggle,
+      icon: Icon(
+        _saved ? Icons.bookmark : Icons.bookmark_border,
+        size: 20,
+        color: _saved ? AppColors.primary : AppColors.textSecondary,
       ),
     );
   }

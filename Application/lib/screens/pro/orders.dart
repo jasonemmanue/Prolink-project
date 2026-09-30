@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../api/session.dart';
 import '../../data.dart';
 import '../../models.dart';
 import '../../theme.dart';
@@ -10,9 +12,35 @@ class ProOrdersScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Pro connecté (démo) : Me. Aïcha Nkomo.
-    final orders =
-        MockData.orders().where((o) => o.pro.id == MockData.pros[0].id).toList();
+    final session = context.watch<Session>();
+    final meId = session.online ? session.userId : MockData.pros[0].id;
+    final orders = MockData.orders().where((o) => o.pro.id == meId).toList();
+    // Devis à chiffrer : (client, titre, besoin, id)
+    final quotes = session.online
+        ? [
+            for (final q in session.quotes)
+              if (q['status'] == 'pending' && q['pro']['id'] == meId)
+                (
+                  q['client']['name'] as String,
+                  'Demande de devis',
+                  q['description'] as String,
+                  q['id'] as String?,
+                ),
+          ]
+        : const [
+            (
+              'Brice Ewane',
+              'Contentieux commercial',
+              'Mise en demeure + audience au TGI de Douala.',
+              null,
+            ),
+            (
+              'Grace Fotso',
+              'Contentieux commercial',
+              'Recouvrement d\'une créance de 2,4 M XAF.',
+              null,
+            ),
+          ];
     List<Order> by(bool Function(Order) f) => orders.where(f).toList();
     final pending = by((o) => o.status == OrderStatus.pending);
     final running = by((o) => o.status == OrderStatus.inProgress);
@@ -34,7 +62,7 @@ class ProOrdersScreen extends StatelessWidget {
             unselectedLabelColor: AppColors.textSecondary,
             indicatorColor: AppColors.primary,
             tabs: [
-              Tab(text: 'En attente (${pending.length + 2})'),
+              Tab(text: 'En attente (${pending.length + quotes.length})'),
               Tab(text: 'En cours (${running.length})'),
               Tab(text: 'Livrées (${delivered.length})'),
               Tab(text: 'Litiges (${disputes.length})'),
@@ -43,7 +71,7 @@ class ProOrdersScreen extends StatelessWidget {
         ),
         body: TabBarView(
           children: [
-            _list(context, pending, withQuotes: true),
+            _list(context, pending, quotes: quotes),
             _list(context, running),
             _list(context, delivered),
             _list(context, disputes),
@@ -56,22 +84,15 @@ class ProOrdersScreen extends StatelessWidget {
   Widget _list(
     BuildContext context,
     List<Order> orders, {
-    bool withQuotes = false,
+    List<(String, String, String, String?)> quotes = const [],
   }) {
-    final quotes = withQuotes
-        ? const [
-            (
-              'Brice Ewane',
-              'Contentieux commercial',
-              'Mise en demeure + audience au TGI de Douala.',
-            ),
-            (
-              'Grace Fotso',
-              'Contentieux commercial',
-              'Recouvrement d\'une créance de 2,4 M XAF.',
-            ),
-          ]
-        : const <(String, String, String)>[];
+    final session = Session.instance;
+    Future<void> refresh() async {
+      if (session.online) {
+        await Future.wait([session.refreshOrders(), session.refreshPro()]);
+      }
+    }
+
     if (orders.isEmpty && quotes.isEmpty) {
       return Center(
         child: Text(
@@ -80,7 +101,10 @@ class ProOrdersScreen extends StatelessWidget {
         ),
       );
     }
-    return ListView(
+    return RefreshIndicator(
+      onRefresh: refresh,
+      child: ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(vertical: 6),
       children: [
         for (final q in quotes)
@@ -110,7 +134,7 @@ class ProOrdersScreen extends StatelessWidget {
               ),
               onTap: () => pushScreen(
                 context,
-                QuoteReplyScreen(clientName: q.$1, request: q.$3),
+                QuoteReplyScreen(clientName: q.$1, request: q.$3, quoteId: q.$4),
               ),
             ),
           ),
@@ -132,7 +156,7 @@ class ProOrdersScreen extends StatelessWidget {
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('${o.clientName} · ${o.id}'),
+                  Text('${o.clientName} · ${o.code}'),
                   const SizedBox(height: 4),
                   Wrap(
                     spacing: 6,
@@ -155,10 +179,14 @@ class ProOrdersScreen extends StatelessWidget {
                 ),
               ),
               isThreeLine: true,
-              onTap: () => pushScreen(context, ProOrderDetailScreen(order: o)),
+              onTap: () async {
+                await pushScreen(context, ProOrderDetailScreen(order: o));
+                await refresh();
+              },
             ),
           ),
       ],
+      ),
     );
   }
 }

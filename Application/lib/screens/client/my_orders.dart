@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../api/session.dart';
 import '../../data.dart';
 import '../../models.dart';
 import '../../theme.dart';
@@ -11,12 +13,17 @@ class MyOrdersScreen extends StatelessWidget {
   const MyOrdersScreen({super.key});
   @override
   Widget build(BuildContext context) {
-    final orders = MockData.orders();
+    final session = context.watch<Session>();
+    // En ligne : uniquement les commandes passées par l'utilisateur.
+    final orders = MockData.orders()
+        .where((o) => !session.online || o.pro.id != session.userId)
+        .toList();
     final active = orders
         .where(
           (o) =>
               o.status != OrderStatus.completed &&
-              o.status != OrderStatus.disputed,
+              o.status != OrderStatus.disputed &&
+              o.status != OrderStatus.cancelled,
         )
         .toList();
     final past = orders.where((o) => !active.contains(o)).toList();
@@ -68,7 +75,7 @@ class MyOrdersScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('${o.pro.name} · ${o.id}'),
+                  Text('${o.pro.name} · ${o.code}'),
                   const SizedBox(height: 6),
                   OrderStatusPill(o.status),
                 ],
@@ -106,6 +113,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     OrderStatus.delivered => 3,
     OrderStatus.completed => 4,
     OrderStatus.disputed => 3,
+    OrderStatus.cancelled => 0,
   };
 
   @override
@@ -119,7 +127,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       ('Paiement libéré au pro', ''),
     ];
     return Scaffold(
-      appBar: AppBar(title: Text('Commande ${o.id}')),
+      appBar: AppBar(title: Text('Commande ${o.code}')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -196,7 +204,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               child: Column(
                 children: [
                   _row('Montant', formatXaf(o.amountXaf)),
-                  _row('Moyen', 'MTN Mobile Money'),
+                  _row('Moyen', switch (o.paymentMethod) {
+                  'wallet' => 'Portefeuille ProLink',
+                  'orange' => 'Orange Money',
+                  'card' => 'Carte bancaire',
+                  _ => 'MTN Mobile Money',
+                }),
                   _row(
                     'Statut',
                     _status == OrderStatus.completed
@@ -223,8 +236,10 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             icon: const Icon(Icons.verified_outlined),
             label: const Text('Valider la prestation'),
             onPressed: () async {
+              final ok = await _act(context, o, 'validate',
+                  success: 'Paiement libéré au professionnel.');
+              if (!ok || !context.mounted) return;
               setState(() => _status = OrderStatus.completed);
-              showInfo(context, 'Paiement libéré au professionnel.');
               await pushScreen(context, ReviewScreen(order: o));
             },
           ),
@@ -243,7 +258,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             icon: const Icon(Icons.receipt_outlined),
             label: const Text('Télécharger la facture'),
             onPressed: () =>
-                showInfo(context, 'Facture ${o.id}.pdf enregistrée'),
+                showInfo(context, 'Facture ${o.code}.pdf enregistrée'),
           ),
         ];
       case OrderStatus.disputed:
@@ -258,15 +273,30 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         return [
           _disputeButton(context, o),
           const SizedBox(height: 8),
-          TextButton(
-            onPressed: () => showInfo(
-              context,
-              'Annulation demandée — politique ${o.service.cancellation}.',
+          if (_status == OrderStatus.pending)
+            TextButton(
+              onPressed: () async {
+                final ok = await _act(context, o, 'cancel',
+                    success: 'Commande annulée : ${formatXaf(o.amountXaf)} recrédités.');
+                if (ok && context.mounted) {
+                  setState(() => _status = OrderStatus.cancelled);
+                }
+              },
+              child: const Text('Annuler la commande'),
             ),
-            child: const Text('Annuler la commande'),
-          ),
         ];
     }
+  }
+
+  /// Transition d'état côté serveur (validate, cancel…).
+  Future<bool> _act(BuildContext context, Order o, String action,
+      {String? success}) async {
+    final ok = await apiCall<bool>(context, (api) async {
+      await api.post('/orders/${o.id}/$action');
+      return true;
+    }, demo: true, success: success);
+    if (ok == true) await Session.instance.afterMoneyAction();
+    return ok == true;
   }
 
   Widget _disputeButton(BuildContext context, Order o) => OutlinedButton.icon(
@@ -333,6 +363,65 @@ class DisputeScreen extends StatefulWidget {
 class _DisputeScreenState extends State<DisputeScreen> {
   String? _reason;
   String _remedy = 'refund';
+  bool _busy = false;
+  final _desc = TextEditingController();
+  final _msg = TextEditingController();
+  List<(String, String, String)>? _events;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.order.status == OrderStatus.disputed && Session.instance.online) {
+      _loadEvents();
+    }
+  }
+
+  Future<void> _loadEvents() async {
+    final d = await apiCall<Map>(context,
+        (api) async => await api.get('/orders/${widget.order.id}/dispute') as Map);
+    if (d == null || !mounted) return;
+    final me = Session.instance.userId;
+    setState(() => _events = [
+          for (final e in (d['events'] as List))
+            (
+              e['by'] == me ? 'Vous' : 'ProLink / autre partie',
+              e['text'] as String,
+              timeAgo(DateTime.parse(e['at']).toLocal()),
+            ),
+        ]);
+  }
+
+  Future<void> _open() async {
+    setState(() => _busy = true);
+    final ok = await apiCall<bool>(context, (api) async {
+      await api.post('/orders/${widget.order.id}/dispute', {
+        'reason': _reason,
+        'remedy': _remedy,
+        'description': _desc.text.trim(),
+      });
+      return true;
+    }, demo: true);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (ok != true) return;
+    await Session.instance.afterMoneyAction();
+    if (!mounted) return;
+    Navigator.pop(context, true);
+    showInfo(context, 'Litige ouvert. Un médiateur vous contactera sous 48 h.');
+  }
+
+  Future<void> _sendMessage() async {
+    final text = _msg.text.trim();
+    if (text.isEmpty) return;
+    final ok = await apiCall<bool>(context, (api) async {
+      await api.post('/orders/${widget.order.id}/dispute/messages', {'text': text});
+      return true;
+    }, demo: true, success: 'Message ajouté au dossier');
+    if (ok == true) {
+      _msg.clear();
+      if (Session.instance.online) _loadEvents();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -350,7 +439,7 @@ class _DisputeScreenState extends State<DisputeScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           Text(
-            'Commande ${o.id} · ${formatXaf(o.amountXaf)}',
+            'Commande ${o.code} · ${formatXaf(o.amountXaf)}',
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           Text(
@@ -383,9 +472,10 @@ class _DisputeScreenState extends State<DisputeScreen> {
             onSelectionChanged: (s) => setState(() => _remedy = s.first),
           ),
           const SizedBox(height: 16),
-          const TextField(
+          TextField(
+            controller: _desc,
             maxLines: 4,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               labelText: 'Décrivez le problème',
               hintText: 'Dates, échanges, ce qui était prévu…',
             ),
@@ -399,15 +489,7 @@ class _DisputeScreenState extends State<DisputeScreen> {
           const SizedBox(height: 20),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: _reason == null
-                ? null
-                : () {
-                    Navigator.pop(context, true);
-                    showInfo(
-                      context,
-                      'Litige ouvert. Un médiateur vous contactera sous 48 h.',
-                    );
-                  },
+            onPressed: _reason == null || _busy ? null : _open,
             child: const Text('Ouvrir le litige'),
           ),
         ],
@@ -416,14 +498,15 @@ class _DisputeScreenState extends State<DisputeScreen> {
   }
 
   Widget _followUp(Order o) {
-    final events = [
-      ('Litige ouvert par le client', 'Livrable non conforme', 5),
-      ('Réponse du professionnel', 'Propose une reprise sous 7 jours', 4),
-      ('Médiateur assigné', 'Sandrine — équipe ProLink', 3),
-      ('Pièces demandées', 'Captures du livrable attendues', 1),
-    ];
+    final events = _events ??
+        const [
+          ('Litige ouvert par le client', 'Livrable non conforme', 'J-5'),
+          ('Réponse du professionnel', 'Propose une reprise sous 7 jours', 'J-4'),
+          ('Médiateur assigné', 'Sandrine — équipe ProLink', 'J-3'),
+          ('Pièces demandées', 'Captures du livrable attendues', 'J-1'),
+        ];
     return Scaffold(
-      appBar: AppBar(title: Text('Litige ${o.id}')),
+      appBar: AppBar(title: Text('Litige ${o.code}')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -443,17 +526,21 @@ class _DisputeScreenState extends State<DisputeScreen> {
                 ),
                 subtitle: Text(e.$2),
                 trailing: Text(
-                  'J-${e.$3}',
+                  e.$3,
                   style: TextStyle(color: AppColors.textSecondary),
                 ),
               ),
             ),
           ),
           const SizedBox(height: 12),
-          const TextField(
+          TextField(
+            controller: _msg,
             decoration: InputDecoration(
               hintText: 'Ajouter un message au dossier…',
-              suffixIcon: Icon(Icons.send),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.send),
+                onPressed: _sendMessage,
+              ),
             ),
           ),
         ],
@@ -473,6 +560,7 @@ class ReviewScreen extends StatefulWidget {
 class _ReviewScreenState extends State<ReviewScreen> {
   int _stars = 5;
   final Set<String> _tags = {'Ponctuel'};
+  final _text = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -528,16 +616,26 @@ class _ReviewScreenState extends State<ReviewScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          const TextField(
+          TextField(
+            controller: _text,
             maxLines: 4,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               labelText: 'Votre commentaire (public)',
               hintText: 'Partagez votre expérience…',
             ),
           ),
           const SizedBox(height: 20),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
+              final ok = await apiCall<bool>(context, (api) async {
+                await api.post('/orders/${o.id}/review', {
+                  'stars': _stars,
+                  'text': _text.text.trim(),
+                  'tags': _tags.toList(),
+                });
+                return true;
+              }, demo: true);
+              if (ok != true || !context.mounted) return;
               Navigator.pop(context);
               showInfo(context, 'Merci ! Votre avis est publié.');
             },
@@ -565,6 +663,8 @@ class QuoteRequestScreen extends StatefulWidget {
 class _QuoteRequestScreenState extends State<QuoteRequestScreen> {
   String _budget = '100k-500k';
   String _urgency = 'month';
+  final _need = TextEditingController();
+  final _place = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -584,9 +684,10 @@ class _QuoteRequestScreenState extends State<QuoteRequestScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          const TextField(
+          TextField(
+            controller: _need,
             maxLines: 5,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               labelText: 'Décrivez votre besoin',
               hintText: 'Contexte, objectifs, contraintes…',
             ),
@@ -624,8 +725,9 @@ class _QuoteRequestScreenState extends State<QuoteRequestScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          const TextField(
-            decoration: InputDecoration(
+          TextField(
+            controller: _place,
+            decoration: const InputDecoration(
               labelText: 'Lieu d\'intervention',
               prefixIcon: Icon(Icons.place_outlined),
             ),
@@ -639,7 +741,23 @@ class _QuoteRequestScreenState extends State<QuoteRequestScreen> {
           const SizedBox(height: 20),
           ElevatedButton.icon(
             icon: const Icon(Icons.send),
-            onPressed: () {
+            onPressed: () async {
+              if (_need.text.trim().length < 10) {
+                showInfo(context, 'Décrivez votre besoin (10 caractères minimum)');
+                return;
+              }
+              final ok = await apiCall<bool>(context, (api) async {
+                await api.post('/quotes', {
+                  'pro_id': widget.pro.id,
+                  if (widget.service.proId.isNotEmpty) 'service_id': widget.service.id,
+                  'description': _need.text.trim(),
+                  'budget': _budget,
+                  'urgency': _urgency,
+                  'location': _place.text.trim(),
+                });
+                return true;
+              }, demo: true);
+              if (ok != true || !context.mounted) return;
               Navigator.pop(context);
               showInfo(
                 context,

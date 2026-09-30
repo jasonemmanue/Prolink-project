@@ -26,7 +26,9 @@ class MockData {
   /// Avatar de l'utilisateur connecté (internaute de démo).
   static final String meAvatar = _photo('1500648767791-00dcc994a43e');
 
-  static final List<Pro> pros = [
+  static List<Pro> pros = List.of(_demoPros);
+
+  static final List<Pro> _demoPros = [
     Pro(
       id: 'p1',
       name: 'Me. Aïcha Nkomo',
@@ -180,7 +182,55 @@ class MockData {
 
   static Pro proById(String id) => pros.firstWhere((p) => p.id == id);
 
-  static List<Post> feed() {
+  // ------------------------------------------------------------------
+  // Données chargées depuis l'API (null = mode démo, données ci-dessous).
+  static List<Post>? liveFeed;
+  static Map<String, List<Service>>? liveServices;
+  static List<LiveEvent>? liveLives;
+  static List<Conversation>? liveConversations;
+  static List<Order>? liveOrders;
+  static List<AppNotification>? liveNotifications;
+
+  static void resetLive() {
+    pros = List.of(_demoPros);
+    liveFeed = null;
+    liveServices = null;
+    liveLives = null;
+    liveConversations = null;
+    liveOrders = null;
+    liveNotifications = null;
+  }
+
+  static Service? serviceById(String? id) {
+    if (id == null) return null;
+    final all = liveServices?.values ?? _services.values;
+    for (final list in all) {
+      for (final s in list) {
+        if (s.id == id) return s;
+      }
+    }
+    return null;
+  }
+
+  /// Pro de repli quand un auteur n'est pas encore chargé.
+  static final Pro unknownPro = Pro(
+    id: '',
+    name: 'Utilisateur ProLink',
+    job: '',
+    category: '',
+    city: '',
+    avatar: '',
+    cover: _cov1,
+    rating: 0,
+    followers: 0,
+    verifiedLevel: 0,
+    bio: '',
+    languages: const ['FR'],
+  );
+
+  static List<Post> feed() => liveFeed ?? _demoFeed();
+
+  static List<Post> _demoFeed() {
     final now = DateTime.now();
     return [
       Post(
@@ -501,10 +551,13 @@ class MockData {
     ],
   };
 
-  static List<Service> servicesOf(Pro p) =>
-      _services[p.id] ?? _services['p1']!;
+  static List<Service> servicesOf(Pro p) => liveServices != null
+      ? (liveServices![p.id] ?? const [])
+      : (_services[p.id] ?? _services['p1']!);
 
-  static List<LiveEvent> lives() {
+  static List<LiveEvent> lives() => liveLives ?? _demoLives();
+
+  static List<LiveEvent> _demoLives() {
     final now = DateTime.now();
     return [
       LiveEvent(
@@ -565,7 +618,10 @@ class MockData {
     ];
   }
 
-  static List<Conversation> conversations() {
+  static List<Conversation> conversations() =>
+      liveConversations ?? _demoConversations();
+
+  static List<Conversation> _demoConversations() {
     final now = DateTime.now();
     ChatMessage m(String id, String author, String text, Duration ago,
             {bool me = false}) =>
@@ -684,7 +740,9 @@ class MockData {
     'Serge Abena',
   ];
 
-  static List<Order> orders() {
+  static List<Order> orders() => liveOrders ?? _demoOrders();
+
+  static List<Order> _demoOrders() {
     final now = DateTime.now();
     Order o(String id, int pro, int svc, String variant, int amount,
             OrderStatus st, int ageDays, int dueDays,
@@ -723,7 +781,10 @@ class MockData {
     ];
   }
 
-  static List<AppNotification> notifications() {
+  static List<AppNotification> notifications() =>
+      liveNotifications ?? _demoNotifications();
+
+  static List<AppNotification> _demoNotifications() {
     final now = DateTime.now();
     return [
       AppNotification(

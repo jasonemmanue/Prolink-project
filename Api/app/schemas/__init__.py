@@ -584,6 +584,9 @@ class LiveUpdate(BaseModel):
     cover_url: str | None = None
     scheduled_at: datetime | None = None
     price_xaf: int | None = Field(default=None, ge=0)
+    # Modifiables après la fin du live :
+    replay_policy: Literal["free", "paid", "private", "none"] | None = None
+    replay_price_xaf: int | None = Field(default=None, ge=0)
 
 
 class LiveEndIn(BaseModel):

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../api/session.dart';
 import '../../data.dart';
 import '../../models.dart';
 import '../../theme.dart';
@@ -30,7 +31,12 @@ class ProProfileScreen extends StatelessWidget {
                   icon: const Icon(Icons.share_outlined),
                 ),
                 IconButton(
-                  onPressed: () => showReportSheet(context, 'ce profil'),
+                  onPressed: () => showReportSheet(
+                    context,
+                    'ce profil',
+                    type: 'pro',
+                    id: pro.id,
+                  ),
                   icon: const Icon(Icons.flag_outlined),
                 ),
               ],
@@ -119,7 +125,7 @@ class ProProfileScreen extends StatelessWidget {
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        const Expanded(child: _FollowButtons()),
+                        Expanded(child: _FollowButtons(proId: pro.id)),
                         const SizedBox(width: 8),
                         Expanded(
                           child: OutlinedButton.icon(
@@ -185,49 +191,7 @@ class ProProfileScreen extends StatelessWidget {
                 itemCount: services.length,
               ),
               const DiscoverLivesTab(),
-              ListView.builder(
-                padding: const EdgeInsets.all(12),
-                itemCount: _reviews.length,
-                itemBuilder: (_, i) {
-                  final r = _reviews[i];
-                  return Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(children: [
-                            CircleAvatar(
-                              radius: 16,
-                              backgroundColor:
-                                  AppColors.secondary.withOpacity(0.15),
-                              child: Text(r.$1[0],
-                                  style: const TextStyle(
-                                      color: AppColors.secondary)),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(r.$1,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w700)),
-                            ),
-                            Text('★' * r.$2,
-                                style:
-                                    const TextStyle(color: AppColors.accent)),
-                          ]),
-                          const SizedBox(height: 6),
-                          Text(r.$3),
-                          const SizedBox(height: 4),
-                          Text(r.$4,
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.textSecondary)),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
+              _ReviewsTab(proId: pro.id),
             ],
           ),
         ),
@@ -403,7 +367,8 @@ class _TabsDelegate extends SliverPersistentHeaderDelegate {
 
 /// Suivre (gratuit) + cloche de notification (UC-IN-04 / UC-IN-05).
 class _FollowButtons extends StatefulWidget {
-  const _FollowButtons();
+  final String proId;
+  const _FollowButtons({required this.proId});
   @override
   State<_FollowButtons> createState() => _FollowButtonsState();
 }
@@ -411,6 +376,35 @@ class _FollowButtons extends StatefulWidget {
 class _FollowButtonsState extends State<_FollowButtons> {
   bool _following = false;
   bool _bell = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (Session.instance.online) _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final r = await Session.instance.api.get('/pros/${widget.proId}');
+      if (mounted) {
+        setState(() {
+          _following = r['is_following'] ?? false;
+          _bell = r['notify'] ?? false;
+        });
+      }
+    } catch (_) {}
+  }
+
+  /// follow=null : désabonnement ; sinon (dés)active la cloche.
+  Future<bool> _sync({required bool follow, bool bell = false}) async {
+    final ok = await apiCall<bool>(context, (api) async {
+      final path = '/pros/${widget.proId}/follow';
+      follow ? await api.post(path, null, {'notify': bell}) : await api.delete(path);
+      return true;
+    }, demo: true);
+    return ok == true;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -418,14 +412,22 @@ class _FollowButtonsState extends State<_FollowButtons> {
         Expanded(
           child: _following
               ? OutlinedButton(
-                  onPressed: () => setState(() {
-                    _following = false;
-                    _bell = false;
-                  }),
+                  onPressed: () async {
+                    if (await _sync(follow: false) && mounted) {
+                      setState(() {
+                        _following = false;
+                        _bell = false;
+                      });
+                    }
+                  },
                   child: const Text('Abonné'),
                 )
               : ElevatedButton(
-                  onPressed: () => setState(() => _following = true),
+                  onPressed: () async {
+                    if (await _sync(follow: true) && mounted) {
+                      setState(() => _following = true);
+                    }
+                  },
                   child: const Text('Suivre'),
                 ),
         ),
@@ -433,7 +435,8 @@ class _FollowButtonsState extends State<_FollowButtons> {
           const SizedBox(width: 4),
           IconButton.filledTonal(
             tooltip: 'Cloche de notification',
-            onPressed: () {
+            onPressed: () async {
+              if (!await _sync(follow: true, bell: !_bell) || !mounted) return;
               setState(() => _bell = !_bell);
               showInfo(
                 context,
@@ -449,6 +452,89 @@ class _FollowButtonsState extends State<_FollowButtons> {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Avis clients : API en ligne, exemples en démo.
+class _ReviewsTab extends StatefulWidget {
+  final String proId;
+  const _ReviewsTab({required this.proId});
+  @override
+  State<_ReviewsTab> createState() => _ReviewsTabState();
+}
+
+class _ReviewsTabState extends State<_ReviewsTab> {
+  List<(String, int, String, String)> _items = List.of(_reviews);
+
+  @override
+  void initState() {
+    super.initState();
+    if (Session.instance.online) _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final list = await Session.instance.api
+          .get('/pros/${widget.proId}/reviews', query: {'limit': 50}) as List;
+      if (!mounted) return;
+      setState(() => _items = [
+            for (final r in list)
+              (
+                r['author']['name'] as String,
+                r['stars'] as int,
+                [r['text'] ?? '', if (r['reply'] != null) '\n↳ Réponse du pro : ${r['reply']}']
+                    .join(),
+                timeAgo(DateTime.parse(r['created_at']).toLocal()),
+              ),
+          ]);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_items.isEmpty) {
+      return Center(
+        child: Text('Pas encore d\'avis',
+            style: TextStyle(color: AppColors.textSecondary)),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: _items.length,
+      itemBuilder: (_, i) {
+        final r = _items[i];
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: AppColors.secondary.withOpacity(0.15),
+                    child: Text(r.$1.isEmpty ? '?' : r.$1[0],
+                        style: const TextStyle(color: AppColors.secondary)),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(r.$1,
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                  Text('★' * r.$2,
+                      style: const TextStyle(color: AppColors.accent)),
+                ]),
+                const SizedBox(height: 6),
+                Text(r.$3),
+                const SizedBox(height: 4),
+                Text(r.$4,
+                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

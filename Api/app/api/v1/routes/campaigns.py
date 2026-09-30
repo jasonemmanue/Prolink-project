@@ -6,7 +6,7 @@ from app.core.deps import current_user, require_pro
 from app.db import get_db
 from app.models import Campaign, Post, Service, User
 from app.schemas import CampaignIn, CampaignOut, campaign_out
-from app.services import ledger
+from app.services import cache, ledger
 from app.services.platform import get_setting
 
 router = APIRouter(prefix="/campaigns", tags=["sponsoring"])
@@ -46,6 +46,7 @@ def create(payload: CampaignIn, db: Session = Depends(get_db), user: User = Depe
     ledger.debit(db, user.id, c.total_xaf, "sponsorship",
                  f"Sponsorisation {payload.target_type} — {payload.days} j", related_id=c.id)
     db.commit()
+    cache.invalidate("feed")
     db.refresh(c)
     return campaign_out(c)
 
@@ -64,6 +65,7 @@ def pause(cid: str, db: Session = Depends(get_db), user: User = Depends(current_
         raise HTTPException(409, "Seule une campagne active peut être mise en pause")
     c.status = "paused"
     db.commit()
+    cache.invalidate("feed")
     return campaign_out(c)
 
 
@@ -74,6 +76,7 @@ def resume(cid: str, db: Session = Depends(get_db), user: User = Depends(current
         raise HTTPException(409, "Campagne non en pause")
     c.status = "active"
     db.commit()
+    cache.invalidate("feed")
     return campaign_out(c)
 
 
@@ -89,4 +92,5 @@ def stop(cid: str, db: Session = Depends(get_db), user: User = Depends(current_u
                       related_id=c.id)
     c.status = "ended"
     db.commit()
+    cache.invalidate("feed")
     return campaign_out(c)

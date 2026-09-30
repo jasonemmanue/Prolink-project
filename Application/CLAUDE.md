@@ -2,8 +2,9 @@
 
 ## Conventions
 
-- **Pas de gestionnaire d'état lourd** : Provider seulement pour `AppLocale` (FR/EN global).
-- Les données MVP viennent de `lib/data.dart` (`MockData`). Remplacer par appels HTTP vers `Api/` quand backend live.
+- **Pas de gestionnaire d'état lourd** : Provider pour `AppLocale` (FR/EN) et `Session` (`lib/api/session.dart`).
+- Données : `Session.bootstrap()` charge l'API et remplit les listes `MockData.live*` ; sans session (mode démo) les écrans lisent les données embarquées de `data.dart`. Les écrans lisent donc toujours `MockData.xxx()` et font `context.watch<Session>()` pour se rafraîchir.
+- Actions : `apiCall(context, (api) async => ...)` (`widgets/common.dart`) — no-op en démo, message d'erreur serveur affiché sinon. Après une action d'argent : `Session.instance.afterMoneyAction()`.
 - Palette centralisée dans `AppColors` (`lib/theme.dart`). Ne jamais coder de hex en dur.
 - Prix XAF via `formatXaf()` (`lib/widgets/common.dart`).
 

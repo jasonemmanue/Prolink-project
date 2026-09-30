@@ -6,7 +6,7 @@ from app.core.deps import Page, current_user, optional_user, require_pro
 from app.db import get_db, utcnow
 from app.models import Follow, Live, LiveTicket, User
 from app.schemas import LiveEndIn, LiveIn, LiveOut, LiveUpdate, TipIn, live_out
-from app.services import ledger, livekit
+from app.services import cache, ledger, livekit
 from app.services.notify import notify, notify_many
 from app.services.platform import commission
 
@@ -55,15 +55,21 @@ def has_access(db: Session, lv: Live, user: User | None) -> bool:
 def list_lives(status: str | None = Query(None, description="scheduled,live,ended"),
                pro_id: str | None = None, page: Page = Depends(), db: Session = Depends(get_db),
                user: User | None = Depends(optional_user)):
-    stmt = select(Live).where(Live.status != "cut")
-    if status:
-        stmt = stmt.where(Live.status.in_(status.split(",")))
-    if pro_id:
-        stmt = stmt.where(Live.pro_id == pro_id)
-    # En direct d'abord, puis les prochains programmés.
-    rows = db.scalars(stmt.order_by((Live.status == "live").desc(), Live.scheduled_at)
-                      .limit(page.limit).offset(page.offset)).all()
-    return [live_out(lv, has_access(db, lv, user)) for lv in rows]
+    def compute():
+        stmt = select(Live).where(Live.status != "cut")
+        if status:
+            stmt = stmt.where(Live.status.in_(status.split(",")))
+        if pro_id:
+            stmt = stmt.where(Live.pro_id == pro_id)
+        # En direct d'abord, puis les prochains programmés.
+        rows = db.scalars(stmt.order_by((Live.status == "live").desc(), Live.scheduled_at)
+                          .limit(page.limit).offset(page.offset)).all()
+        return [live_out(lv) for lv in rows]
+    items = cache.cached("lives", f"{status}:{pro_id}:{page.limit}:{page.offset}", 15, compute)
+    if not items:
+        return items
+    lives = {lv.id: lv for lv in db.scalars(select(Live).where(Live.id.in_([i["id"] for i in items])))}
+    return [{**i, "has_access": has_access(db, lives[i["id"]], user)} for i in items if i["id"] in lives]
 
 
 @router.get("/tickets/mine", response_model=list[LiveOut])
@@ -92,6 +98,7 @@ def create_live(payload: LiveIn, db: Session = Depends(get_db), user: User = Dep
     bells = list(db.scalars(select(Follow.follower_id).where(Follow.pro_id == user.id, Follow.notify.is_(True))))
     notify_many(db, bells, "live", f"Live programmé par {user.name}", payload.title, {"live_id": lv.id})
     db.commit()
+    cache.invalidate("lives")
     db.refresh(lv)
     return live_out(lv, True)
 
@@ -99,11 +106,16 @@ def create_live(payload: LiveIn, db: Session = Depends(get_db), user: User = Dep
 @router.patch("/{lid}", response_model=LiveOut)
 def update_live(lid: str, payload: LiveUpdate, db: Session = Depends(get_db), user: User = Depends(require_pro)):
     lv = _own(db, lid, user)
-    if lv.status != "scheduled":
+    data = payload.model_dump(exclude_unset=True)
+    replay_only = set(data) <= {"replay_policy", "replay_price_xaf"}
+    if lv.status == "ended" and not replay_only:
+        raise HTTPException(409, "Après la fin du live, seul le replay est modifiable")
+    if lv.status not in ("scheduled", "ended"):
         raise HTTPException(409, "Seul un live programmé peut être modifié")
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    for k, v in data.items():
         setattr(lv, k, v)
     db.commit()
+    cache.invalidate("lives")
     return live_out(lv, True)
 
 
@@ -118,6 +130,7 @@ def start_live(lid: str, db: Session = Depends(get_db), user: User = Depends(req
     audience |= set(db.scalars(select(LiveTicket.user_id).where(LiveTicket.live_id == lid)))
     notify_many(db, list(audience), "live", f"{user.name} est en direct", lv.title, {"live_id": lv.id})
     db.commit()
+    cache.invalidate("lives")
     return live_out(lv, True)
 
 
@@ -134,6 +147,7 @@ def end_live(lid: str, payload: LiveEndIn, db: Session = Depends(get_db), user: 
     lv.replay_price_xaf = payload.replay_price_xaf
     tickets = db.scalars(select(LiveTicket).where(LiveTicket.live_id == lid, LiveTicket.kind == "live")).all()
     db.commit()
+    cache.invalidate("lives")
     duration = int((lv.ended_at - lv.started_at).total_seconds()) if lv.started_at else 0
     return {
         "live": live_out(lv, True),
@@ -161,6 +175,7 @@ def join_token(lid: str, db: Session = Depends(get_db), user: User = Depends(cur
         lv.viewers += 1
         lv.peak_viewers = max(lv.peak_viewers, lv.viewers)
         db.commit()
+        cache.invalidate("lives")
     return livekit.access_token(f"live-{lv.id}", user.id, user.name, can_publish=is_host)
 
 
@@ -170,6 +185,7 @@ def leave(lid: str, db: Session = Depends(get_db), user: User = Depends(current_
     if lv.pro_id != user.id and lv.viewers > 0:
         lv.viewers -= 1
         db.commit()
+        cache.invalidate("lives")
     return {"viewers": lv.viewers}
 
 
@@ -197,6 +213,7 @@ def buy_ticket(lid: str, db: Session = Depends(get_db), user: User = Depends(cur
         raise HTTPException(409, "Billetterie fermée")
     _sell(db, lv, user, "live", lv.price_xaf)
     db.commit()
+    cache.invalidate("lives")
     return live_out(lv, True)
 
 
@@ -207,6 +224,7 @@ def buy_replay(lid: str, db: Session = Depends(get_db), user: User = Depends(cur
         raise HTTPException(409, "Replay non disponible à l'achat")
     _sell(db, lv, user, "replay", lv.replay_price_xaf)
     db.commit()
+    cache.invalidate("lives")
     return live_out(lv, True)
 
 
@@ -227,4 +245,5 @@ def tip(lid: str, payload: TipIn, db: Session = Depends(get_db), user: User = De
     lv.tips_xaf += amount
     notify(db, lv.pro_id, "payment", "Pourboire reçu", f"{user.name} : {amount} XAF", {"live_id": lv.id})
     db.commit()
+    cache.invalidate("lives")
     return {"live": lv.id, "amount_xaf": amount, "commission_xaf": fee, "net_to_pro_xaf": amount - fee}

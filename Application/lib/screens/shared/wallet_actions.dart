@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../api/session.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
 
@@ -18,6 +19,33 @@ class TopUpScreen extends StatefulWidget {
 class _TopUpScreenState extends State<TopUpScreen> {
   int _amount = 10000;
   String _method = 'mtn';
+  bool _busy = false;
+  final _phone = TextEditingController();
+
+  Future<void> _submit() async {
+    setState(() => _busy = true);
+    final tx = await apiCall<Map>(
+      context,
+      (api) async => await api.post('/wallet/topup', {
+        'amount_xaf': _amount,
+        'method': _method,
+        if (_phone.text.trim().isNotEmpty) 'phone': _phone.text.trim(),
+      }) as Map,
+      demo: const {'status': 'pending'},
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (tx == null) return;
+    await Session.instance.afterMoneyAction();
+    if (!mounted) return;
+    Navigator.pop(context);
+    showInfo(
+      context,
+      tx['status'] == 'completed'
+          ? 'Rechargement réussi : + ${formatXaf(_amount)}'
+          : 'Confirmez le paiement de ${formatXaf(_amount)} sur votre téléphone.',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,9 +85,10 @@ class _TopUpScreenState extends State<TopUpScreen> {
           ),
           const SizedBox(height: 12),
           if (_method != 'card')
-            const TextField(
+            TextField(
+              controller: _phone,
               keyboardType: TextInputType.phone,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Numéro Mobile Money',
                 prefixText: '+237 ',
                 prefixIcon: Icon(Icons.phone_outlined),
@@ -72,13 +101,7 @@ class _TopUpScreenState extends State<TopUpScreen> {
           ),
           const SizedBox(height: 20),
           ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              showInfo(
-                context,
-                'Confirmez le paiement de ${formatXaf(_amount)} sur votre téléphone.',
-              );
-            },
+            onPressed: _busy ? null : _submit,
             child: Text('Recharger ${formatXaf(_amount)}'),
           ),
         ],
@@ -98,9 +121,55 @@ class WithdrawScreen extends StatefulWidget {
 
 class _WithdrawScreenState extends State<WithdrawScreen> {
   static const _minBalance = 500;
-  late double _amount = (widget.availableXaf - _minBalance) / 2;
+  late double _amount = ((widget.availableXaf - _minBalance) / 2)
+      .clamp(1000, (widget.availableXaf - _minBalance).clamp(1000, 1 << 31))
+      .toDouble();
   String _method = 'mtn';
   int _step = 0; // 0 = saisie, 1 = code 2FA, 2 = succès
+  bool _busy = false;
+  String? _reference;
+  final _phone = TextEditingController();
+  final _code = TextEditingController();
+
+  /// Étape 1 → 2 : demande d'un code SMS au serveur.
+  Future<void> _askCode() async {
+    if (Session.instance.online && _phone.text.trim().isEmpty) {
+      showInfo(context, 'Saisissez le numéro Mobile Money');
+      return;
+    }
+    final r = await apiCall<Map>(
+      context,
+      (api) async =>
+          await api.post('/auth/otp/send', {'target': '-', 'purpose': 'withdraw'}) as Map,
+      demo: const {},
+    );
+    if (r == null || !mounted) return;
+    setState(() {
+      _step = 1;
+      // Serveur de développement : le code est renvoyé pour les tests.
+      if (r['dev_code'] != null) _code.text = r['dev_code'];
+    });
+  }
+
+  Future<void> _confirm() async {
+    setState(() => _busy = true);
+    final tx = await apiCall<Map>(
+      context,
+      (api) async => await api.post('/wallet/withdraw', {
+        'amount_xaf': _amount.round(),
+        'operator': _method,
+        'phone': _phone.text.trim(),
+        'otp': _code.text.trim(),
+      }) as Map,
+      demo: const {'reference': 'WD-58213'},
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (tx == null) return;
+    _reference = tx['reference'];
+    await Session.instance.afterMoneyAction();
+    if (mounted) setState(() => _step = 2);
+  }
 
   int get _max => widget.availableXaf - _minBalance;
   int get _fees => (_amount * 0.01).round();
@@ -120,7 +189,19 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
     );
   }
 
-  Widget _form() => ListView(
+  Widget _form() => _max < 1000
+      ? Center(
+          key: const ValueKey(0),
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text(
+              'Solde retirable insuffisant (minimum 1 000 XAF, '
+              '${formatXaf(_minBalance)} restent sur le portefeuille).',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        )
+      : ListView(
     key: const ValueKey(0),
     padding: const EdgeInsets.all(16),
     children: [
@@ -143,7 +224,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
         value: _amount,
         min: 1000,
         max: _max.toDouble(),
-        divisions: (_max - 1000) ~/ 1000,
+        divisions: ((_max - 1000) ~/ 1000).clamp(1, 1000),
         onChanged: (v) => setState(() => _amount = v),
       ),
       Row(
@@ -160,6 +241,16 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
         value: _method,
         onChanged: (m) => setState(() => _method = m),
         mobileOnly: true,
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        controller: _phone,
+        keyboardType: TextInputType.phone,
+        decoration: const InputDecoration(
+          labelText: 'Numéro Mobile Money',
+          prefixText: '+237 ',
+          prefixIcon: Icon(Icons.phone_outlined),
+        ),
       ),
       const SizedBox(height: 12),
       Card(
@@ -182,7 +273,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
       ),
       const SizedBox(height: 20),
       ElevatedButton(
-        onPressed: () => setState(() => _step = 1),
+        onPressed: _askCode,
         child: const Text('Continuer'),
       ),
     ],
@@ -205,22 +296,23 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
         ),
         const SizedBox(height: 4),
         const Text(
-          'Code envoyé par SMS au +237 6•• •• •• 42',
+          'Code de confirmation envoyé par SMS',
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 20),
-        const TextField(
+        TextField(
+          controller: _code,
           keyboardType: TextInputType.number,
           maxLength: 6,
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 24, letterSpacing: 10),
-          decoration: InputDecoration(counterText: '', hintText: '••••••'),
+          style: const TextStyle(fontSize: 24, letterSpacing: 10),
+          decoration: const InputDecoration(counterText: '', hintText: '••••••'),
         ),
         const SizedBox(height: 20),
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
-            onPressed: () => setState(() => _step = 2),
+            onPressed: _busy ? null : _confirm,
             child: const Text('Valider'),
           ),
         ),
@@ -246,8 +338,8 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Référence WD-58213 · statut : en traitement',
+          Text(
+            'Référence ${_reference ?? 'WD-58213'} · statut : en traitement',
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),

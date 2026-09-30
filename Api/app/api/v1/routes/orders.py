@@ -9,6 +9,7 @@ from app.schemas import (
     DeliverIn, DisputeIn, DisputeMessageIn, DisputeOut, OrderIn, OrderOut, ReviewIn,
     ReviewOut, ReviewReplyIn, order_out, review_out,
 )
+from app.services import cache
 from app.services import orders as svc
 from app.services.notify import notify
 from app.services.platform import moderate_text
@@ -222,6 +223,7 @@ def review(oid: str, payload: ReviewIn, db: Session = Depends(get_db), user: Use
     svc.refresh_rating(db, o.pro_id)
     notify(db, o.pro_id, "review", f"Nouvel avis {payload.stars}★", payload.text[:120], {"review_id": r.id})
     db.commit()
+    cache.invalidate("pros")
     db.refresh(r)
     return review_out(r)
 

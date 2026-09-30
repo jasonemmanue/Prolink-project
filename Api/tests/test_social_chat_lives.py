@@ -115,3 +115,13 @@ def test_paid_live_ticket_token_tip(buyer, pro, make_user):
 
     late = make_user("Tard", "late@test.cm")
     assert late.get(f"/lives/{lv['id']}").json()["has_access"] is False
+
+
+def test_replay_policy_editable_after_end(pro):
+    lv = pro.post("/lives", {"title": "Atelier SARL", "mode": "free"}).json()
+    assert pro.patch(f"/lives/{lv['id']}", {"replay_policy": "none"}).status_code == 200
+    pro.post(f"/lives/{lv['id']}/start")
+    pro.post(f"/lives/{lv['id']}/end", {"replay_policy": "free"})
+    r = pro.patch(f"/lives/{lv['id']}", {"replay_policy": "paid", "replay_price_xaf": 1500})
+    assert r.status_code == 200 and r.json()["replay_price_xaf"] == 1500
+    assert pro.patch(f"/lives/{lv['id']}", {"title": "Nouveau"}).status_code == 409

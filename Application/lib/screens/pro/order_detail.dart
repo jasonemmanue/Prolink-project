@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../api/session.dart';
 import '../../models.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
@@ -15,12 +16,25 @@ class ProOrderDetailScreen extends StatefulWidget {
 
 class _ProOrderDetailScreenState extends State<ProOrderDetailScreen> {
   late OrderStatus _status = widget.order.status;
+  bool _busy = false;
+
+  /// Transition côté serveur ; renvoie true si elle a réussi.
+  Future<bool> _act(String action, {Map<String, dynamic>? body, String? success}) async {
+    setState(() => _busy = true);
+    final ok = await apiCall<bool>(context, (api) async {
+      await api.post('/orders/${widget.order.id}/$action', body);
+      return true;
+    }, demo: true, success: success);
+    if (mounted) setState(() => _busy = false);
+    if (ok == true) await Session.instance.afterMoneyAction();
+    return ok == true;
+  }
 
   @override
   Widget build(BuildContext context) {
     final o = widget.order;
     return Scaffold(
-      appBar: AppBar(title: Text(o.id)),
+      appBar: AppBar(title: Text(o.code)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -51,7 +65,9 @@ class _ProOrderDetailScreenState extends State<ProOrderDetailScreen> {
                 o.clientName,
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
-              subtitle: const Text('Membre depuis 2025 · 4 commandes'),
+              subtitle: Text(o.brief?.isNotEmpty == true
+                  ? o.brief!
+                  : 'Client ProLink · paiement en séquestre'),
               trailing: IconButton(
                 icon: const Icon(Icons.chat_outlined, color: AppColors.primary),
                 // Démo : le chat associé réutilise l'écran de conversation.
@@ -132,10 +148,13 @@ class _ProOrderDetailScreenState extends State<ProOrderDetailScreen> {
           ElevatedButton.icon(
             icon: const Icon(Icons.check),
             label: const Text('Confirmer la prise en charge'),
-            onPressed: () {
-              setState(() => _status = OrderStatus.inProgress);
-              showInfo(context, 'Le client est notifié.');
-            },
+            onPressed: _busy
+                ? null
+                : () async {
+                    if (await _act('confirm', success: 'Le client est notifié.') && mounted) {
+                      setState(() => _status = OrderStatus.inProgress);
+                    }
+                  },
           ),
           const SizedBox(height: 8),
           TextButton(
@@ -168,17 +187,40 @@ class _ProOrderDetailScreenState extends State<ProOrderDetailScreen> {
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
-            onPressed: () => showInfo(context, 'Réponse envoyée au médiateur.'),
+            onPressed: () => _replyMediator(context),
             icon: const Icon(Icons.forum_outlined),
             label: const Text('Répondre au médiateur'),
           ),
         ];
       case OrderStatus.completed:
         return [const _Info('Commande terminée. Les fonds sont disponibles.')];
+      case OrderStatus.cancelled:
+        return [const _Info('Commande annulée : le client a été remboursé.')];
     }
   }
 
+  Future<void> _replyMediator(BuildContext context) async {
+    final c = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Message au médiateur'),
+        content: TextField(controller: c, maxLines: 4),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, c.text.trim()),
+            child: const Text('Envoyer'),
+          ),
+        ],
+      ),
+    );
+    if (text == null || text.isEmpty || !context.mounted) return;
+    await _act('dispute/messages', body: {'text': text}, success: 'Réponse envoyée au médiateur.');
+  }
+
   Future<void> _deliver(BuildContext context) async {
+    final msg = TextEditingController();
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -205,9 +247,10 @@ class _ProOrderDetailScreenState extends State<ProOrderDetailScreen> {
               label: const Text('Joindre les livrables'),
             ),
             const SizedBox(height: 12),
-            const TextField(
+            TextField(
+              controller: msg,
               maxLines: 3,
-              decoration: InputDecoration(labelText: 'Message au client'),
+              decoration: const InputDecoration(labelText: 'Message au client'),
             ),
             const SizedBox(height: 16),
             SizedBox(
@@ -221,9 +264,12 @@ class _ProOrderDetailScreenState extends State<ProOrderDetailScreen> {
         ),
       ),
     );
-    if (ok == true) {
+    if (ok != true || !context.mounted) return;
+    if (await _act('deliver',
+            body: {'message': msg.text.trim(), 'deliverables': <String>[]},
+            success: 'Livraison envoyée au client.') &&
+        mounted) {
       setState(() => _status = OrderStatus.delivered);
-      if (context.mounted) showInfo(context, 'Livraison envoyée au client.');
     }
   }
 
@@ -250,7 +296,11 @@ class _ProOrderDetailScreenState extends State<ProOrderDetailScreen> {
         ],
       ),
     );
-    if (ok == true && context.mounted) Navigator.pop(context);
+    if (ok != true || !context.mounted) return;
+    if (await _act('decline', success: 'Commande refusée, client remboursé.') &&
+        context.mounted) {
+      Navigator.pop(context);
+    }
   }
 
   Widget _row(String k, String v, {bool bold = false}) => Padding(
@@ -294,10 +344,12 @@ class _Info extends StatelessWidget {
 class QuoteReplyScreen extends StatefulWidget {
   final String clientName;
   final String request;
+  final String? quoteId;
   const QuoteReplyScreen({
     super.key,
     required this.clientName,
     required this.request,
+    this.quoteId,
   });
   @override
   State<QuoteReplyScreen> createState() => _QuoteReplyScreenState();
@@ -309,6 +361,57 @@ class _QuoteReplyScreenState extends State<QuoteReplyScreen> {
     ('Rédaction des conclusions', 150000),
   ];
   int get _total => _lines.fold(0, (a, l) => a + l.$2);
+  final _delay = TextEditingController();
+  final _message = TextEditingController();
+
+  Future<void> _addLine() async {
+    final label = TextEditingController();
+    final amount = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nouvelle ligne'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: label, decoration: const InputDecoration(labelText: 'Libellé')),
+          const SizedBox(height: 8),
+          TextField(
+            controller: amount,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Montant', suffixText: 'XAF'),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Ajouter')),
+        ],
+      ),
+    );
+    final value = int.tryParse(amount.text.replaceAll(' ', ''));
+    if (ok == true && label.text.trim().isNotEmpty && value != null) {
+      setState(() => _lines.add((label.text.trim(), value)));
+    }
+  }
+
+  Future<void> _send() async {
+    if (_lines.isEmpty) {
+      showInfo(context, 'Ajoutez au moins une ligne');
+      return;
+    }
+    final ok = await apiCall<bool>(context, (api) async {
+      await api.post('/quotes/${widget.quoteId}/reply', {
+        'lines': [
+          for (final l in _lines) {'label': l.$1, 'amount_xaf': l.$2},
+        ],
+        'delay': _delay.text.trim(),
+        'message': _message.text.trim(),
+      });
+      return true;
+    }, demo: true);
+    if (ok != true || !mounted) return;
+    if (Session.instance.online) Session.instance.refreshPro();
+    Navigator.pop(context);
+    showInfo(context, 'Devis envoyé à ${widget.clientName}.');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -352,23 +455,23 @@ class _QuoteReplyScreenState extends State<QuoteReplyScreen> {
             ),
           ),
           TextButton.icon(
-            onPressed: () => setState(
-              () => _lines.add(('Audience / représentation', 75000)),
-            ),
+            onPressed: _addLine,
             icon: const Icon(Icons.add),
             label: const Text('Ajouter une ligne'),
           ),
           const SizedBox(height: 8),
-          const TextField(
-            decoration: InputDecoration(
+          TextField(
+            controller: _delay,
+            decoration: const InputDecoration(
               labelText: 'Délai de réalisation',
               hintText: 'ex. 3 semaines',
             ),
           ),
           const SizedBox(height: 12),
-          const TextField(
+          TextField(
+            controller: _message,
             maxLines: 3,
-            decoration: InputDecoration(labelText: 'Conditions / message'),
+            decoration: const InputDecoration(labelText: 'Conditions / message'),
           ),
           const SizedBox(height: 16),
           Row(
@@ -396,10 +499,7 @@ class _QuoteReplyScreenState extends State<QuoteReplyScreen> {
           ElevatedButton.icon(
             icon: const Icon(Icons.send),
             label: const Text('Envoyer le devis'),
-            onPressed: () {
-              Navigator.pop(context);
-              showInfo(context, 'Devis envoyé à ${widget.clientName}.');
-            },
+            onPressed: _send,
           ),
         ],
       ),

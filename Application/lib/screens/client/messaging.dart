@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../api/session.dart';
 import '../../data.dart';
 import '../../models.dart';
 import '../../theme.dart';
@@ -13,7 +15,7 @@ class MessagingScreen extends StatefulWidget {
 }
 
 class _MessagingScreenState extends State<MessagingScreen> {
-  final _all = MockData.conversations();
+  List<Conversation> get _all => MockData.conversations();
   String _query = '';
 
   List<Conversation> _filter(bool Function(Conversation) f) => _all
@@ -25,6 +27,7 @@ class _MessagingScreenState extends State<MessagingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<Session>();
     final unread = _all.where((c) => c.unread > 0 && !c.archived).length;
     return DefaultTabController(
       length: 4,
@@ -128,6 +131,11 @@ class _ConversationList extends StatelessWidget {
   const _ConversationList({required this.convs});
   @override
   Widget build(BuildContext context) {
+    final session = Session.instance;
+    Future<void> refresh() async {
+      if (session.online) await session.refreshConversations();
+    }
+
     if (convs.isEmpty) {
       return Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -139,7 +147,10 @@ class _ConversationList extends StatelessWidget {
         ]),
       );
     }
-    return ListView.separated(
+    return RefreshIndicator(
+      onRefresh: refresh,
+      child: ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(vertical: 4),
       itemCount: convs.length,
       separatorBuilder: (_, __) => const Divider(height: 1, indent: 80),
@@ -218,9 +229,13 @@ class _ConversationList extends StatelessWidget {
                 const Icon(Icons.done_all, size: 16, color: AppColors.secondary),
             ],
           ),
-          onTap: () => pushScreen(context, ChatScreen(peer: c.peer)),
+          onTap: () async {
+            await pushScreen(context, ChatScreen(peer: c.peer));
+            await refresh(); // compteurs de non-lus à jour
+          },
         );
       },
+      ),
     );
   }
 }

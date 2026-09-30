@@ -36,6 +36,9 @@ class Post {
   final int likes;
   final int comments;
   final bool sponsored;
+  final bool liked;
+  final bool saved;
+  final String kind;
   const Post({
     required this.id,
     required this.author,
@@ -45,6 +48,9 @@ class Post {
     required this.likes,
     required this.comments,
     this.sponsored = false,
+    this.liked = false,
+    this.saved = false,
+    this.kind = 'text',
   });
 }
 
@@ -57,6 +63,10 @@ class Service {
   final String duration;
   final String modality; // remote, on-site, mixed
   final String cancellation; // flexible, standard, strict
+  final List<ServiceVariant> variants; // Basic / Standard / Premium
+  final List<String> deliverables;
+  final String status; // active, draft, paused
+  final String proId;
   const Service({
     required this.id,
     required this.title,
@@ -66,7 +76,17 @@ class Service {
     required this.duration,
     required this.modality,
     required this.cancellation,
+    this.variants = const [],
+    this.deliverables = const [],
+    this.status = 'active',
+    this.proId = '',
   });
+}
+
+class ServiceVariant {
+  final String name;
+  final int priceXaf;
+  const ServiceVariant(this.name, this.priceXaf);
 }
 
 class LiveEvent {
@@ -79,6 +99,10 @@ class LiveEvent {
   final int priceXaf;
   final int viewers;
   final DateTime startAt;
+  final String proId;
+  final String mode; // free, followers, paid, tips
+  final String status; // scheduled, live, ended
+  final bool hasAccess;
   const LiveEvent({
     required this.id,
     required this.title,
@@ -89,6 +113,10 @@ class LiveEvent {
     required this.priceXaf,
     required this.viewers,
     required this.startAt,
+    this.proId = '',
+    this.mode = 'free',
+    this.status = 'scheduled',
+    this.hasAccess = true,
   });
 }
 
@@ -127,7 +155,7 @@ class Conversation {
 }
 
 /// Cycle de vie d'une commande escrow (cf. annexe C.1 du cahier des charges).
-enum OrderStatus { pending, inProgress, delivered, completed, disputed }
+enum OrderStatus { pending, inProgress, delivered, completed, disputed, cancelled }
 
 extension OrderStatusLabel on OrderStatus {
   String get label => switch (this) {
@@ -136,6 +164,7 @@ extension OrderStatusLabel on OrderStatus {
     OrderStatus.delivered => 'Livrée',
     OrderStatus.completed => 'Terminée',
     OrderStatus.disputed => 'Litige',
+    OrderStatus.cancelled => 'Annulée',
   };
 }
 
@@ -149,6 +178,12 @@ class Order {
   final OrderStatus status;
   final DateTime createdAt;
   final DateTime deadline;
+  final String? _code;
+  final int? _commission;
+  final String? brief;
+  final String? deliveryMessage;
+  final bool reviewed;
+  final String paymentMethod; // wallet | mtn | orange | card
   const Order({
     required this.id,
     required this.pro,
@@ -159,10 +194,20 @@ class Order {
     required this.status,
     required this.createdAt,
     required this.deadline,
-  });
+    String? code,
+    int? commissionXaf,
+    this.brief,
+    this.deliveryMessage,
+    this.reviewed = false,
+    this.paymentMethod = 'mtn',
+  })  : _code = code,
+        _commission = commissionXaf;
 
-  /// Commission plateforme de 10 % sur les prestations.
-  int get commissionXaf => (amountXaf * 0.10).round();
+  /// Numéro lisible (PL-xxxxx). En démo, l'id sert de numéro.
+  String get code => _code ?? id;
+
+  /// Commission plateforme (10 % par défaut, valeur serveur si connue).
+  int get commissionXaf => _commission ?? (amountXaf * 0.10).round();
   int get netXaf => amountXaf - commissionXaf;
 }
 

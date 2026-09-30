@@ -3,9 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
+import 'api/session.dart';
 import 'l10n.dart';
 import 'theme.dart';
+import 'screens/home_shell.dart';
 import 'screens/onboarding.dart';
+import 'screens/pro_shell.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,8 +19,11 @@ void main() {
     ),
   );
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => AppLocale(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AppLocale()),
+        ChangeNotifierProvider.value(value: Session.instance),
+      ],
       child: const ProLinkApp(),
     ),
   );
@@ -56,12 +62,27 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 1400), () {
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-      );
-    });
+    _start();
+  }
+
+  /// Restaure la session mémorisée (jeton valide → accès direct à l'app).
+  Future<void> _start() async {
+    final results = await Future.wait([
+      Session.instance.restore().catchError((_) => false),
+      Future.delayed(const Duration(milliseconds: 1400), () => true),
+    ]);
+    if (!mounted) return;
+    final restored = results.first;
+    final session = Session.instance;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => !restored
+            ? const OnboardingScreen()
+            : session.isPro
+            ? const ProShell()
+            : const HomeShell(),
+      ),
+    );
   }
 
   @override

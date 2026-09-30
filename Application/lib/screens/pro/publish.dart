@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../api/session.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
 import 'sponsor.dart';
@@ -15,6 +16,49 @@ class _PublishScreenState extends State<PublishScreen> {
   int _media = 0;
   DateTime? _scheduledAt;
   bool _sponsor = false;
+  bool _busy = false;
+  final _title = TextEditingController();
+  final _text = TextEditingController();
+
+  // Pas encore de stockage de fichiers côté API : les médias ajoutés sont
+  // des illustrations de la banque d'images (URL), prêtes pour l'upload S3.
+  static const _gallery = [
+    'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=900',
+    'https://images.unsplash.com/photo-1521791136064-7986c2920216?w=900',
+    'https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=900',
+    'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=900',
+    'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=900',
+  ];
+
+  Future<void> _publish() async {
+    final text = _text.text.trim();
+    if (text.isEmpty) {
+      showInfo(context, 'Écrivez le contenu de la publication');
+      return;
+    }
+    setState(() => _busy = true);
+    final ok = await apiCall<bool>(context, (api) async {
+      await api.post('/posts', {
+        'kind': _type == 'live' ? 'live_announce' : _type,
+        if (_title.text.trim().isNotEmpty) 'title': _title.text.trim(),
+        'text': text,
+        'images': [for (var i = 0; i < _media; i++) _gallery[i % _gallery.length]],
+        'audience': _audience,
+        if (_scheduledAt != null)
+          'scheduled_at': DateTime(_scheduledAt!.year, _scheduledAt!.month,
+                  _scheduledAt!.day, 9)
+              .toUtc()
+              .toIso8601String(),
+      });
+      await Session.instance.refreshFeed();
+      return true;
+    }, demo: true);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (ok != true) return;
+    Navigator.pop(context);
+    showInfo(context, _scheduledAt == null ? 'Publication en ligne ✔' : 'Publication programmée');
+  }
   final _types = const [
     ('text', 'Texte', Icons.article),
     ('photo', 'Photo', Icons.photo_camera),
@@ -32,14 +76,10 @@ class _PublishScreenState extends State<PublishScreen> {
       appBar: AppBar(
         title: const Text('Nouvelle publication'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Brouillon'),
-          ),
           Padding(
             padding: const EdgeInsets.all(8),
             child: ElevatedButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: _busy ? null : _publish,
               child: const Text('Publier'),
             ),
           ),
@@ -76,13 +116,16 @@ class _PublishScreenState extends State<PublishScreen> {
                 .toList(),
           ),
           const SizedBox(height: 16),
-          const TextField(
-            decoration: InputDecoration(labelText: 'Titre (facultatif)'),
+          TextField(
+            controller: _title,
+            decoration: const InputDecoration(labelText: 'Titre (facultatif)'),
           ),
           const SizedBox(height: 12),
-          const TextField(
+          TextField(
+            controller: _text,
             maxLines: 6,
-            decoration: InputDecoration(
+            maxLength: 3000,
+            decoration: const InputDecoration(
               labelText: 'Contenu de la publication',
               hintText:
                   'Astuce, actualité, opinion pro… (jusqu\'à 3 000 caractères)',

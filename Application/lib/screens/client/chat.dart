@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../../api/mappers.dart';
+import '../../api/session.dart';
 import 'groups.dart';
 import '../../l10n.dart';
 import '../../models.dart';
@@ -22,10 +26,93 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _autoTranslate = true;
   String _myLang = 'fr';
   final List<ChatMessage> _msgs = [];
+  final _scroll = ScrollController();
+  final Map<String, String> _serverTranslations = {};
+  String? _conversationId;
+  Timer? _poll;
+  bool _loading = false;
+
+  bool get _online => Session.instance.online;
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    _ctrl.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// Ouvre (ou retrouve) la conversation sur le serveur puis rafraîchit
+  /// toutes les 4 s (les messages temps réel passent aussi par WebSocket
+  /// côté API ; le polling suffit pour le MVP mobile).
+  Future<void> _openRemote() async {
+    setState(() => _loading = true);
+    final conv = await apiCall<Map>(
+      context,
+      (api) async =>
+          await api.post('/chat/conversations', {'user_id': widget.peer.id}) as Map,
+    );
+    if (conv == null || !mounted) return;
+    _conversationId = conv['id'];
+    await _refresh();
+    if (!mounted) return;
+    setState(() => _loading = false);
+    _poll = Timer.periodic(const Duration(seconds: 4), (_) => _refresh());
+  }
+
+  Future<void> _refresh() async {
+    final id = _conversationId;
+    if (id == null) return;
+    try {
+      final api = Session.instance.api;
+      final list = await api.get('/chat/conversations/$id/messages',
+          query: {'limit': 100}) as List;
+      await api.post('/chat/conversations/$id/read');
+      if (!mounted) return;
+      final me = Session.instance.userId;
+      final fresh = [for (final j in list) Mappers.message(j, me)];
+      if (fresh.length != _msgs.length ||
+          (fresh.isNotEmpty && fresh.last.id != _msgs.last.id)) {
+        setState(() => _msgs
+          ..clear()
+          ..addAll(fresh));
+        _scrollDown();
+      }
+    } catch (_) {}
+  }
+
+  void _scrollDown() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.animateTo(_scroll.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+      }
+    });
+  }
+
+  /// Traduction côté serveur (LibreTranslate/DeepL), mise en cache par message.
+  Future<void> _translateRemote(ChatMessage m) async {
+    if (_serverTranslations.containsKey(m.id)) return;
+    _serverTranslations[m.id] = ''; // en cours
+    try {
+      final r = await Session.instance.api
+          .post('/translate', {'text': m.text, 'source': 'auto', 'target': _myLang});
+      final text = r['text'] as String;
+      if (mounted && text.trim() != m.text.trim()) {
+        setState(() => _serverTranslations[m.id] = text);
+      }
+    } catch (_) {
+      _serverTranslations.remove(m.id);
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    if (_online) {
+      _openRemote();
+      return;
+    }
     _msgs.addAll([
       ChatMessage(
         id: '1',
@@ -51,6 +138,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String? _translateFor(ChatMessage m) {
     if (!_autoTranslate) return null;
+    if (_online) {
+      final t = _serverTranslations['${m.id}:$_myLang'] ?? _serverTranslations[m.id];
+      if (t == null) {
+        _translateRemote(m);
+      } else if (t.isNotEmpty) {
+        return t;
+      }
+    }
     // Naïve heuristic: detect if text looks like the other language.
     final looksEn = RegExp(
       r'\b(the|is|hello|need|quote|price)\b',
@@ -69,9 +164,25 @@ class _ChatScreenState extends State<ChatScreen> {
     return null;
   }
 
-  void _send() {
+  Future<void> _send() async {
     final t = _ctrl.text.trim();
     if (t.isEmpty) return;
+    if (_online) {
+      if (_conversationId == null) return;
+      _ctrl.clear();
+      final r = await apiCall<Map>(
+        context,
+        (api) async => await api.post(
+          '/chat/conversations/$_conversationId/messages',
+          {'text': t},
+        ) as Map,
+      );
+      if (r == null || !mounted) return;
+      setState(() => _msgs.add(
+          Mappers.message(Map<String, dynamic>.from(r), Session.instance.userId)));
+      _scrollDown();
+      return;
+    }
     setState(() {
       _msgs.add(
         ChatMessage(
@@ -153,10 +264,15 @@ class _ChatScreenState extends State<ChatScreen> {
             enabled: _autoTranslate,
             lang: _myLang,
             onToggle: (v) => setState(() => _autoTranslate = v),
-            onLangChange: (v) => setState(() => _myLang = v),
+            onLangChange: (v) => setState(() {
+              _myLang = v;
+              _serverTranslations.clear();
+            }),
           ),
+          if (_loading) const LinearProgressIndicator(minHeight: 2),
           Expanded(
             child: ListView.builder(
+              controller: _scroll,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               itemCount: _msgs.length,
               itemBuilder: (_, i) => _Bubble(

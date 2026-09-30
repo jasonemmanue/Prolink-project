@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../api/session.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
 
@@ -7,10 +8,12 @@ import '../../widgets/common.dart';
 class LivePrecheckScreen extends StatefulWidget {
   final String title;
   final String mode;
+  final String liveId;
   const LivePrecheckScreen({
     super.key,
     required this.title,
     required this.mode,
+    this.liveId = 'demo',
   });
   @override
   State<LivePrecheckScreen> createState() => _LivePrecheckScreenState();
@@ -122,15 +125,23 @@ class _LivePrecheckScreenState extends State<LivePrecheckScreen> {
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: ready
-                ? () => Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => LiveOnAirScreen(
-                        title: widget.title,
-                        mode: widget.mode,
+                ? () async {
+                    final ok = await apiCall<bool>(context, (api) async {
+                      await api.post('/lives/${widget.liveId}/start');
+                      return true;
+                    }, demo: true);
+                    if (ok != true || !context.mounted) return;
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => LiveOnAirScreen(
+                          title: widget.title,
+                          mode: widget.mode,
+                          liveId: widget.liveId,
+                        ),
                       ),
-                    ),
-                  )
+                    );
+                  }
                 : null,
             icon: const Icon(Icons.podcasts),
             label: const Text('Passer en direct'),
@@ -145,7 +156,13 @@ class _LivePrecheckScreenState extends State<LivePrecheckScreen> {
 class LiveOnAirScreen extends StatefulWidget {
   final String title;
   final String mode;
-  const LiveOnAirScreen({super.key, required this.title, required this.mode});
+  final String liveId;
+  const LiveOnAirScreen({
+    super.key,
+    required this.title,
+    required this.mode,
+    this.liveId = 'demo',
+  });
   @override
   State<LiveOnAirScreen> createState() => _LiveOnAirScreenState();
 }
@@ -154,7 +171,25 @@ class _LiveOnAirScreenState extends State<LiveOnAirScreen> {
   Timer? _t;
   int _seconds = 0;
   int _viewers = 12;
+  int _peak = 12;
   int _tips = 0;
+
+  bool get _online => Session.instance.online;
+
+  /// En ligne : spectateurs et pourboires réels (toutes les 5 s).
+  Future<void> _poll() async {
+    try {
+      final lv = await Session.instance.api.get('/lives/${widget.liveId}');
+      if (!mounted) return;
+      final tips = lv['tips_xaf'] as int;
+      setState(() {
+        if (tips > _tips) _events.add('💰 Nouveau pourboire : ${formatXaf(tips - _tips)}');
+        _viewers = lv['viewers'];
+        _peak = lv['peak_viewers'];
+        _tips = tips;
+      });
+    } catch (_) {}
+  }
   bool _mic = true;
   bool _cam = true;
   final _events = <String>['Grace F. a rejoint', 'Paul N. : Bonjour Maître !'];
@@ -162,10 +197,25 @@ class _LiveOnAirScreenState extends State<LiveOnAirScreen> {
   @override
   void initState() {
     super.initState();
+    if (_online) {
+      _viewers = 0;
+      _peak = 0;
+      _events
+        ..clear()
+        ..add('Vous êtes en direct 🎥');
+    }
     _t = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_online) {
+        setState(() => _seconds++);
+        if (_seconds % 5 == 0) _poll();
+        return;
+      }
       setState(() {
         _seconds++;
-        if (_seconds % 3 == 0) _viewers += 3;
+        if (_seconds % 3 == 0) {
+          _viewers += 3;
+          _peak = _viewers;
+        }
         if (_seconds % 7 == 0) {
           _tips += 1000;
           _events.add('💰 Brice E. a envoyé un pourboire de 1 000 XAF');
@@ -370,14 +420,28 @@ class _LiveOnAirScreenState extends State<LiveOnAirScreen> {
       ),
     );
     if (ok != true || !mounted) return;
+    var seconds = _seconds, peak = _peak, tips = _tips;
+    final r = await apiCall<Map>(
+      context,
+      (api) async => await api.post('/lives/${widget.liveId}/end', {'replay_policy': 'free'}) as Map,
+      demo: const {},
+    );
+    if (r == null || !mounted) return;
     _t?.cancel();
+    final s = r['summary'] as Map?;
+    if (s != null) {
+      seconds = s['duration_seconds'];
+      peak = s['peak_viewers'];
+      tips = s['tips_xaf'] + s['tickets_xaf'];
+    }
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) => LiveSummaryScreen(
-          seconds: _seconds,
-          peakViewers: _viewers,
-          tipsXaf: _tips,
+          seconds: seconds,
+          peakViewers: peak,
+          tipsXaf: tips,
+          liveId: widget.liveId,
         ),
       ),
     );
@@ -389,11 +453,13 @@ class LiveSummaryScreen extends StatefulWidget {
   final int seconds;
   final int peakViewers;
   final int tipsXaf;
+  final String liveId;
   const LiveSummaryScreen({
     super.key,
     required this.seconds,
     required this.peakViewers,
     required this.tipsXaf,
+    this.liveId = 'demo',
   });
   @override
   State<LiveSummaryScreen> createState() => _LiveSummaryScreenState();
@@ -401,6 +467,7 @@ class LiveSummaryScreen extends StatefulWidget {
 
 class _LiveSummaryScreenState extends State<LiveSummaryScreen> {
   String _replay = 'free';
+  final _price = TextEditingController();
   @override
   Widget build(BuildContext context) {
     final net = (widget.tipsXaf * 0.9).round();
@@ -422,8 +489,8 @@ class _LiveSummaryScreenState extends State<LiveSummaryScreen> {
                 '${widget.seconds ~/ 60} min ${widget.seconds % 60} s',
               ),
               _stat('Spectateurs pic', '${widget.peakViewers}'),
-              _stat('Pourboires bruts', formatXaf(widget.tipsXaf)),
-              _stat('Net (après 10 %)', formatXaf(net)),
+              _stat('Recettes brutes', formatXaf(widget.tipsXaf)),
+              _stat('Net estimé', formatXaf(net)),
             ],
           ),
           const SectionLabel('Replay'),
@@ -438,9 +505,10 @@ class _LiveSummaryScreenState extends State<LiveSummaryScreen> {
           ),
           if (_replay == 'paid') ...[
             const SizedBox(height: 12),
-            const TextField(
+            TextField(
+              controller: _price,
               keyboardType: TextInputType.number,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Prix du replay',
                 suffixText: 'XAF',
               ),
@@ -448,7 +516,16 @@ class _LiveSummaryScreenState extends State<LiveSummaryScreen> {
           ],
           const SizedBox(height: 24),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
+              final ok = await apiCall<bool>(context, (api) async {
+                await api.patch('/lives/${widget.liveId}', {
+                  'replay_policy': _replay,
+                  'replay_price_xaf': int.tryParse(_price.text.replaceAll(' ', '')) ?? 0,
+                });
+                return true;
+              }, demo: true);
+              if (ok != true || !context.mounted) return;
+              Session.instance.afterMoneyAction();
               Navigator.pop(context);
               showInfo(context, 'Replay publié sur votre profil.');
             },

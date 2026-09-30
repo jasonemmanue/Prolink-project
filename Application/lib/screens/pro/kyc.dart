@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../api/session.dart';
+import '../../data.dart';
 import '../../theme.dart';
+import '../pro_shell.dart';
 import '../../widgets/common.dart';
 
 /// Vérification KYC en 3 niveaux (UC-PR-01) :
@@ -20,6 +23,75 @@ class _KycScreenState extends State<KycScreen> {
     'Diplômes & certifications': 0,
   };
 
+  static const _kinds = {
+    'Pièce d\'identité (CNI / passeport)': 'id_card',
+    'Selfie de vérification': 'selfie',
+    'Justificatif de domicile': 'address',
+    'Registre de commerce / ordre professionnel': 'registry',
+    'Diplômes & certifications': 'diploma',
+  };
+
+  final _job = TextEditingController();
+  String _category = MockData.categories.first;
+
+  bool get _online => Session.instance.online;
+  bool get _needsProfile => _online && !Session.instance.isPro;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_online && !_needsProfile) _load();
+  }
+
+  Future<void> _load() async {
+    final list = await apiCall<List>(
+        context, (api) async => await api.get('/pros/me/kyc') as List);
+    if (list == null || !mounted) return;
+    setState(() {
+      for (final k in _docs.keys) {
+        _docs[k] = 0;
+      }
+      for (final d in list) {
+        final label = _kinds.entries.firstWhere((e) => e.value == d['kind']).key;
+        final st = d['status'] == 'approved' ? 2 : d['status'] == 'pending' ? 1 : 0;
+        if (st > _docs[label]!) _docs[label] = st;
+      }
+    });
+  }
+
+  Future<void> _send(String label) async {
+    // Stockage de fichiers à brancher (S3/GCS) : on référence le document.
+    final kind = _kinds[label]!;
+    final ok = await apiCall<bool>(context, (api) async {
+      await api.post('/pros/me/kyc', {
+        'kind': kind,
+        'file_url': 'https://storage.prolink.cm/kyc/${Session.instance.userId}/$kind.jpg',
+      });
+      return true;
+    }, demo: true, success: 'Document envoyé pour vérification');
+    if (ok == true && mounted) setState(() => _docs[label] = 1);
+  }
+
+  /// Internaute → compte pro (« Devenir professionnel »).
+  Future<void> _becomePro() async {
+    if (_job.text.trim().length < 2) {
+      showInfo(context, 'Indiquez votre métier');
+      return;
+    }
+    final ok = await apiCall<bool>(context, (api) async {
+      await api.post('/pros/me', {'job': _job.text.trim(), 'category': _category});
+      await Session.instance.refreshMe();
+      await Session.instance.bootstrap();
+      return true;
+    });
+    if (ok != true || !mounted) return;
+    showInfo(context, 'Compte professionnel créé 🎉');
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const ProShell()),
+      (_) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -27,6 +99,49 @@ class _KycScreenState extends State<KycScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (_needsProfile) ...[
+            Card(
+              color: AppColors.primary.withOpacity(0.05),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Créer mon profil professionnel',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text('Publiez vos services, recevez des commandes payées en séquestre.'),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _job,
+                      decoration: const InputDecoration(labelText: 'Métier (ex. Photographe)'),
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      initialValue: _category,
+                      decoration: const InputDecoration(labelText: 'Catégorie principale'),
+                      items: [
+                        for (final c in MockData.categories)
+                          DropdownMenuItem(value: c, child: Text(c)),
+                      ],
+                      onChanged: (v) => _category = v ?? _category,
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _becomePro,
+                        child: const Text('Devenir professionnel'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           const _Level(
             level: 1,
             title: 'Vérifié',
@@ -64,7 +179,7 @@ class _KycScreenState extends State<KycScreen> {
                   subtitle: Text(label, style: TextStyle(color: color)),
                   trailing: e.value == 0
                       ? OutlinedButton(
-                          onPressed: () => setState(() => _docs[e.key] = 1),
+                          onPressed: _needsProfile ? null : () => _send(e.key),
                           child: const Text('Envoyer'),
                         )
                       : null,

@@ -14,6 +14,7 @@ from app.api.v1.routes import (
 )
 from app.core.config import settings
 from app.db import SessionLocal
+from app.services import cache
 from app.services.orders import release_due_orders
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -83,6 +84,7 @@ def health():
     finally:
         db.close()
     return {"status": "ok" if database == "ok" else "degraded", "database": database,
+            "cache": "ok" if cache.ping() else "off",
             "payments": "sandbox" if settings.payments_sandbox else "cinetpay"}
 
 

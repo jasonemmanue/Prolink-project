@@ -8,6 +8,7 @@ import os
 os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+psycopg2://prolink:prolink@localhost:5432/prolink_test")
 os.environ["SEED_DEMO"] = "false"
+os.environ["REDIS_URL"] = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/1")
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402
@@ -19,6 +20,7 @@ from app.core.security import hash_password  # noqa: E402
 from app.db import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import User  # noqa: E402
+from app.services import cache  # noqa: E402
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -32,7 +34,9 @@ def schema():
 
 @pytest.fixture(autouse=True)
 def clean():
+    cache.flush_all()
     yield
+    cache.flush_all()
     tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
     with engine.begin() as conn:
         conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))

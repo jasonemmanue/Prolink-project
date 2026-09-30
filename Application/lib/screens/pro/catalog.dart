@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../api/session.dart';
 import '../../data.dart';
 import '../../models.dart';
 import '../../theme.dart';
@@ -12,9 +13,34 @@ class ProCatalogScreen extends StatefulWidget {
 }
 
 class _ProCatalogScreenState extends State<ProCatalogScreen> {
-  final List<Service> _services = [...MockData.servicesOf(MockData.pros[0])];
+  final List<Service> _services = [];
   // Statut : active / draft / paused (§8.2.3).
-  final Map<String, String> _status = {'s3': 'draft'};
+  final Map<String, String> _status = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  void _reload() {
+    final s = Session.instance;
+    final list = MockData.servicesOf(s.online ? s.mePro : MockData.pros[0]);
+    setState(() {
+      _services
+        ..clear()
+        ..addAll(list);
+      _status
+        ..clear()
+        ..addAll({for (final x in list) x.id: x.status});
+      if (!s.online) _status['s3'] = 'draft';
+    });
+  }
+
+  Future<void> _openEditor([Service? s]) async {
+    final saved = await pushScreen<bool>(context, ServiceEditorScreen(service: s));
+    if (saved == true && mounted) _reload();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,17 +49,24 @@ class _ProCatalogScreenState extends State<ProCatalogScreen> {
         appBar: AppBar(title: const Text('Catalogue de services')),
         floatingActionButton: FloatingActionButton.extended(
           heroTag: 'new-service',
-          onPressed: () => pushScreen(context, const ServiceEditorScreen()),
+          onPressed: () => _openEditor(),
           icon: const Icon(Icons.add),
           label: const Text('Nouvelle prestation'),
         ),
         body: ReorderableListView.builder(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
           itemCount: _services.length,
-          onReorder: (o, n) => setState(() {
-            if (n > o) n--;
-            _services.insert(n, _services.removeAt(o));
-          }),
+          onReorder: (o, n) {
+            setState(() {
+              if (n > o) n--;
+              _services.insert(n, _services.removeAt(o));
+            });
+            apiCall<bool>(context, (api) async {
+              await api.post('/services/reorder', {'ids': [for (final s in _services) s.id]});
+              await Session.instance.refreshMyServices();
+              return true;
+            });
+          },
           itemBuilder: (_, i) {
             final s = _services[i];
             final st = _status[s.id] ?? 'active';
@@ -82,7 +115,7 @@ class _ProCatalogScreenState extends State<ProCatalogScreen> {
                   ],
                 ),
                 onTap: () =>
-                    pushScreen(context, ServiceEditorScreen(service: s)),
+                    _openEditor(s),
                 trailing: PopupMenuButton<String>(
                   onSelected: (v) => _onMenu(v, s),
                   itemBuilder: (_) => [
@@ -124,7 +157,7 @@ class _ProCatalogScreenState extends State<ProCatalogScreen> {
   Future<void> _onMenu(String v, Service s) async {
     switch (v) {
       case 'edit':
-        pushScreen(context, ServiceEditorScreen(service: s));
+        _openEditor(s);
       case 'delete':
         final ok = await showDialog<bool>(
           context: context,
@@ -149,9 +182,20 @@ class _ProCatalogScreenState extends State<ProCatalogScreen> {
             ],
           ),
         );
-        if (ok == true) setState(() => _services.remove(s));
+        if (ok != true || !mounted) return;
+        final done = await apiCall<bool>(context, (api) async {
+          await api.delete('/services/${s.id}');
+          await Session.instance.refreshMyServices();
+          return true;
+        }, demo: true);
+        if (done == true && mounted) setState(() => _services.remove(s));
       default:
-        setState(() => _status[s.id] = v);
+        final done = await apiCall<bool>(context, (api) async {
+          await api.patch('/services/${s.id}', {'status': v});
+          await Session.instance.refreshMyServices();
+          return true;
+        }, demo: true);
+        if (done == true && mounted) setState(() => _status[s.id] = v);
     }
   }
 }

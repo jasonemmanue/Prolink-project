@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../api/session.dart';
 import '../../data.dart';
 import '../../models.dart';
 import '../../theme.dart';
@@ -20,8 +22,31 @@ class ProDashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final session = context.watch<Session>();
+    final d = session.online ? session.dashboard : null;
+    final alerts = (d?['alerts'] as Map?) ?? const {};
+    final unread = MockData.notifications().where((n) => !n.read).length;
+    final meId = session.online ? session.userId : MockData.pros[0].id;
+    final myOrders = MockData.orders().where((o) => o.pro.id == meId).toList();
+    final disputes = myOrders.where((o) => o.status == OrderStatus.disputed).toList();
+    final pendingQuotes = session.online
+        ? session.quotes.where((q) => q['status'] == 'pending' && q['pro']['id'] == meId).toList()
+        : const <Map<String, dynamic>>[];
+    final quoteCount = session.online ? pendingQuotes.length : 2;
+    final chart = d == null
+        ? null
+        : [for (final day in (d['daily'] as List)) (day['revenue_xaf'] as num).toDouble()];
+    final kyc = session.online ? (alerts['kyc_status'] ?? 'none') : 'pending';
+    final plan = session.online ? (alerts['plan'] ?? 'free') : 'free';
     return SafeArea(
-      child: ListView(
+      child: RefreshIndicator(
+        onRefresh: () async {
+          if (session.online) {
+            await Future.wait([session.refreshPro(), session.refreshOrders(), session.refreshWallet()]);
+          }
+        },
+        child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(12),
         children: [
           Row(
@@ -31,17 +56,18 @@ class ProDashboardScreen extends StatelessWidget {
               IconButton(
                 onPressed: () =>
                     pushScreen(context, const NotificationsScreen()),
-                icon: const Badge(
-                  label: Text('4'),
-                  child: Icon(Icons.notifications_outlined),
+                icon: Badge(
+                  isLabelVisible: unread > 0,
+                  label: Text('$unread'),
+                  child: const Icon(Icons.notifications_outlined),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Bonjour, Me. Aïcha',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          Text(
+            'Bonjour, ${session.firstName}',
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
           ),
           Text(
             'Voici vos indicateurs du jour',
@@ -55,32 +81,34 @@ class ProDashboardScreen extends StatelessWidget {
             crossAxisSpacing: 10,
             mainAxisSpacing: 10,
             childAspectRatio: 1.4,
-            children: const [
+            children: [
               _Kpi(
-                icon: Icons.remove_red_eye,
-                title: 'Vues profil',
-                value: '1 284',
-                trend: '+18%',
+                icon: Icons.people_alt_outlined,
+                title: d == null ? 'Vues profil' : 'Abonnés',
+                value: d == null ? '1 284' : '${d['followers']}',
+                trend: d == null ? '+18%' : 'Note ${d['rating']} ★',
                 color: AppColors.primary,
               ),
               _Kpi(
                 icon: Icons.person_add,
-                title: 'Nouveaux abonnés',
-                value: '46',
-                trend: '+9%',
+                title: 'Nouveaux abonnés (7j)',
+                value: d == null ? '46' : '${d['new_followers_7d']}',
+                trend: d == null ? '+9%' : '',
                 color: AppColors.secondary,
               ),
               _Kpi(
                 icon: Icons.payments,
                 title: 'Revenus (7j)',
-                value: '325 000 XAF',
-                trend: '+22%',
+                value: formatXaf(d == null ? 325000 : (d['revenue_7d_xaf'] as num).toInt()),
+                trend: d == null ? '+22%' : '',
                 color: AppColors.success,
               ),
               _Kpi(
                 icon: Icons.receipt_long,
                 title: 'Commandes',
-                value: '12 · 4 en cours',
+                value: d == null
+                    ? '12 · 4 en cours'
+                    : '${d['orders_total']} · ${d['orders_in_progress']} en cours',
                 trend: '',
                 color: AppColors.accent,
               ),
@@ -114,7 +142,7 @@ class ProDashboardScreen extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  const SizedBox(height: 120, child: _MiniChart()),
+                  SizedBox(height: 120, child: _MiniChart(values: chart)),
                 ],
               ),
             ),
@@ -211,50 +239,65 @@ class ProDashboardScreen extends StatelessWidget {
           const SizedBox(height: 16),
           const Text('Alertes', style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
-          _Alert(
-            icon: Icons.request_quote_outlined,
-            color: AppColors.accent,
-            text: '2 demandes de devis en attente depuis plus de 24 h.',
-            onTap: () => pushScreen(
-              context,
-              const QuoteReplyScreen(
-                clientName: 'Brice Ewane',
-                request:
-                    'Contentieux avec un fournisseur : mise en demeure + audience.',
+          if (quoteCount > 0)
+            _Alert(
+              icon: Icons.request_quote_outlined,
+              color: AppColors.accent,
+              text: '$quoteCount demande(s) de devis à chiffrer.',
+              onTap: () => pushScreen(
+                context,
+                pendingQuotes.isEmpty
+                    ? const QuoteReplyScreen(
+                        clientName: 'Brice Ewane',
+                        request:
+                            'Contentieux avec un fournisseur : mise en demeure + audience.',
+                      )
+                    : QuoteReplyScreen(
+                        clientName: pendingQuotes.first['client']['name'],
+                        request: pendingQuotes.first['description'],
+                        quoteId: pendingQuotes.first['id'],
+                      ),
               ),
             ),
-          ),
-          _Alert(
-            icon: Icons.gavel,
-            color: AppColors.danger,
-            text: '1 litige ouvert — réponse attendue sous 48 h.',
-            onTap: () => pushScreen(
-              context,
-              ProOrderDetailScreen(
-                order: MockData.orders().firstWhere(
-                  (o) => o.status == OrderStatus.disputed,
-                ),
-              ),
+          if (disputes.isNotEmpty)
+            _Alert(
+              icon: Icons.gavel,
+              color: AppColors.danger,
+              text: '${disputes.length} litige(s) ouvert(s) — répondez au médiateur.',
+              onTap: () => pushScreen(context, ProOrderDetailScreen(order: disputes.first)),
             ),
-          ),
-          _Alert(
-            icon: Icons.verified_outlined,
-            color: AppColors.primary,
-            text: 'Niveau Premium : 1 document en revue, 2 à fournir.',
-            onTap: () => pushScreen(context, const KycScreen()),
-          ),
-          _Alert(
-            icon: Icons.workspace_premium_outlined,
-            color: AppColors.secondary,
-            text: 'Compte pro gratuit : encore 4 mois. Découvrir les packs.',
-            onTap: () => pushScreen(context, const PlansScreen()),
-          ),
+          if (kyc != 'approved')
+            _Alert(
+              icon: Icons.verified_outlined,
+              color: AppColors.primary,
+              text: kyc == 'pending'
+                  ? 'Vérification KYC en cours de revue.'
+                  : 'Faites vérifier votre identité pour inspirer confiance.',
+              onTap: () => pushScreen(context, const KycScreen()),
+            ),
+          if (plan == 'free')
+            _Alert(
+              icon: Icons.workspace_premium_outlined,
+              color: AppColors.secondary,
+              text: 'Pack gratuit : passez Premium pour les lives payants et plus de prestations.',
+              onTap: () => pushScreen(context, const PlansScreen()),
+            ),
+          if (session.online && quoteCount == 0 && disputes.isEmpty && kyc == 'approved' && plan != 'free')
+            const _Alert(
+              icon: Icons.check_circle_outline,
+              color: AppColors.success,
+              text: 'Tout est à jour. Bonne journée !',
+              onTap: _noop,
+            ),
           const SizedBox(height: 30),
         ],
+        ),
       ),
     );
   }
 }
+
+void _noop() {}
 
 class _Kpi extends StatelessWidget {
   final IconData icon;
@@ -333,10 +376,13 @@ class _Shortcut extends StatelessWidget {
 }
 
 class _MiniChart extends StatelessWidget {
-  const _MiniChart();
+  final List<double>? values;
+  const _MiniChart({this.values});
   @override
   Widget build(BuildContext context) {
-    final values = [40.0, 55.0, 38.0, 72.0, 65.0, 92.0, 80.0];
+    final raw = this.values ?? [40.0, 55.0, 38.0, 72.0, 65.0, 92.0, 80.0];
+    // Évite une division par zéro quand aucun revenu sur la semaine.
+    final values = raw.every((v) => v == 0) ? [for (final _ in raw) 0.5] : raw;
     return LayoutBuilder(
       builder: (context, box) {
         final maxV = values.reduce((a, b) => a > b ? a : b);

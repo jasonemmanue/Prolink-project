@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../api/api_client.dart';
+import '../api/session.dart';
 import '../models.dart';
 import '../theme.dart';
 
@@ -219,6 +221,7 @@ Color orderStatusColor(OrderStatus s) => switch (s) {
   OrderStatus.delivered => AppColors.primary,
   OrderStatus.completed => AppColors.success,
   OrderStatus.disputed => AppColors.danger,
+  OrderStatus.cancelled => AppColors.textSecondary,
 };
 
 class OrderStatusPill extends StatelessWidget {
@@ -233,7 +236,12 @@ class OrderStatusPill extends StatelessWidget {
 }
 
 /// Feuille de signalement réutilisable (post, pro, live, utilisateur).
-Future<void> showReportSheet(BuildContext context, String target) {
+Future<void> showReportSheet(
+  BuildContext context,
+  String target, {
+  String? type,
+  String? id,
+}) {
   const reasons = [
     'Contenu inapproprié ou choquant',
     'Arnaque ou fraude',
@@ -291,12 +299,25 @@ Future<void> showReportSheet(BuildContext context, String target) {
                   ),
                   onPressed: picked == null
                       ? null
-                      : () {
+                      : () async {
                           Navigator.pop(ctx);
-                          showInfo(
-                            context,
-                            'Merci, notre équipe de modération va examiner ce signalement.',
-                          );
+                          if (type != null && id != null) {
+                            final ok = await apiCall<bool>(context, (api) async {
+                              await api.post('/reports', {
+                                'target_type': type,
+                                'target_id': id,
+                                'reason': picked,
+                              });
+                              return true;
+                            }, demo: true);
+                            if (ok != true) return;
+                          }
+                          if (context.mounted) {
+                            showInfo(
+                              context,
+                              'Merci, notre équipe de modération va examiner ce signalement.',
+                            );
+                          }
                         },
                   child: const Text('Envoyer le signalement'),
                 ),
@@ -307,4 +328,27 @@ Future<void> showReportSheet(BuildContext context, String target) {
       ),
     ),
   );
+}
+
+/// Exécute un appel API depuis un écran : en mode démo, ne fait rien et
+/// renvoie `demo` ; en cas d'erreur, affiche le message du serveur.
+Future<T?> apiCall<T>(
+  BuildContext context,
+  Future<T> Function(ApiClient api) call, {
+  T? demo,
+  String? success,
+}) async {
+  final session = Session.instance;
+  if (!session.online) {
+    if (success != null) showInfo(context, success);
+    return demo;
+  }
+  try {
+    final r = await call(session.api);
+    if (success != null && context.mounted) showInfo(context, success);
+    return r;
+  } on ApiException catch (e) {
+    if (context.mounted) showInfo(context, e.message);
+    return null;
+  }
 }

@@ -16,6 +16,26 @@ données de démo (si la base est vide) → lance Uvicorn.
 - API : http://localhost:8000 — docs interactives : http://localhost:8000/docs
 - Santé : http://localhost:8000/health (`database`, mode de paiement)
 - PostgreSQL : `localhost:5432`, base `prolink`, utilisateur/mot de passe `prolink`
+- Redis : `localhost:6379` (cache + limitation de débit)
+
+### Cache Redis
+
+`app/services/cache.py` — lecture des données publiques mises en cache,
+invalidées à chaque écriture (clés versionnées par espace : `pros`, `services`,
+`feed`, `lives`, `categories`, `settings`, `admin`) :
+
+| Endpoint | TTL |
+|---|---|
+| `GET /categories`, `GET /plans` | 1 h |
+| `GET /pros`, `GET /pros/{id}`, `GET /services`, services d'un pro | 60 s |
+| `GET /feed` (par utilisateur) | 30 s |
+| `GET /lives` | 15 s |
+| `GET /admin/dashboard` | 30 s |
+
+Les informations propres à l'utilisateur (suivi, cloche, like, favori, accès
+à un live) sont recalculées à chaque requête et superposées au cache.
+Redis sert aussi à limiter l'envoi de codes SMS (5 / 10 min par numéro →
+HTTP 429). Si Redis est arrêté, l'API continue sans cache (`/health` → `"cache": "off"`).
 
 ### Comptes de démo
 

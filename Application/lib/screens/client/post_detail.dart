@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../api/session.dart';
 import '../../models.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
@@ -15,6 +16,52 @@ class PostDetailScreen extends StatefulWidget {
 
 class _PostDetailScreenState extends State<PostDetailScreen> {
   final _c = TextEditingController();
+  late int _total = widget.post.comments;
+
+  @override
+  void initState() {
+    super.initState();
+    if (Session.instance.online) _load();
+  }
+
+  Future<void> _load() async {
+    final list = await apiCall<List>(
+      context,
+      (api) async => await api.get('/posts/${widget.post.id}/comments',
+          query: {'limit': 100}) as List,
+    );
+    if (list == null || !mounted) return;
+    setState(() {
+      _comments
+        ..clear()
+        ..addAll([
+          for (final c in list)
+            (
+              c['author']['name'] as String,
+              c['text'] as String,
+              c['author']['id'] == widget.post.author.id,
+            ),
+        ]);
+      _total = _comments.length;
+    });
+  }
+
+  Future<void> _send() async {
+    final text = _c.text.trim();
+    if (text.isEmpty) return;
+    final r = await apiCall<Map>(
+      context,
+      (api) async => await api.post('/posts/${widget.post.id}/comments', {'text': text}) as Map,
+      demo: const {},
+    );
+    if (r == null || !mounted) return;
+    setState(() {
+      _comments.add((Session.instance.name, (r['text'] ?? text) as String, false));
+      _total += 1;
+      _c.clear();
+    });
+  }
+
   final _comments = <(String, String, bool)>[
     ('Grace Fotso', 'Très utile, merci pour le partage !', false),
     ('Paul Ndongo', 'Est-ce valable aussi pour une SA ?', false),
@@ -33,7 +80,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         title: const Text('Publication'),
         actions: [
           IconButton(
-            onPressed: () => showReportSheet(context, 'cette publication'),
+            onPressed: () => showReportSheet(
+              context,
+              'cette publication',
+              type: 'post',
+              id: widget.post.id,
+            ),
             icon: const Icon(Icons.flag_outlined),
           ),
         ],
@@ -86,7 +138,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 ],
                 const SizedBox(height: 10),
                 Text(
-                  '❤ ${p.likes} · ${p.comments + _comments.length - 3} commentaires',
+                  '❤ ${p.likes} · $_total commentaires',
                   style: TextStyle(color: AppColors.textSecondary),
                 ),
                 const Divider(height: 24),
@@ -166,17 +218,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.send, color: AppColors.primary),
-                    onPressed: () {
-                      if (_c.text.trim().isEmpty) return;
-                      setState(() {
-                        _comments.add((
-                          'Emmanuel Sakam',
-                          _c.text.trim(),
-                          false,
-                        ));
-                        _c.clear();
-                      });
-                    },
+                    onPressed: _send,
                   ),
                 ],
               ),

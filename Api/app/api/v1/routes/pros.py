@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.deps import Page, current_user, optional_user, require_pro
 from app.db import get_db, utcnow
 from app.models import (
@@ -14,7 +15,7 @@ from app.schemas import (
     CategoryOut, KycDocIn, KycDocOut, LiveOut, PostOut, ProOut, ProUpsert, ReviewOut,
     ServiceOut, SubscribeIn, live_out, post_out, pro_out, review_out, service_out,
 )
-from app.services import ledger
+from app.services import cache, ledger
 from app.services.notify import notify
 from app.services.platform import get_setting
 
@@ -42,8 +43,20 @@ def _follow(db: Session, user: User | None, pro_id: str) -> Follow | None:
 
 @router.get("/categories", response_model=list[CategoryOut], tags=["categories"])
 def categories(db: Session = Depends(get_db)):
-    return db.scalars(select(Category).where(Category.active.is_(True))
-                      .order_by(Category.position, Category.name)).all()
+    return cache.cached("categories", "active", 3600, lambda: [
+        CategoryOut.model_validate(c) for c in db.scalars(
+            select(Category).where(Category.active.is_(True)).order_by(Category.position, Category.name))
+    ])
+
+
+def _with_follow(db: Session, user: User | None, items: list[dict]) -> list[dict]:
+    """Superpose les infos propres à l'utilisateur (suivi, cloche) aux données en cache."""
+    if not user or not items:
+        return items
+    follows = {f.pro_id: f for f in db.scalars(select(Follow).where(
+        Follow.follower_id == user.id, Follow.pro_id.in_([p["id"] for p in items])))}
+    return [{**p, "is_following": p["id"] in follows,
+             "notify": bool(follows.get(p["id"]) and follows[p["id"]].notify)} for p in items]
 
 
 # ------------------------------------------------------------------ annuaire
@@ -61,6 +74,13 @@ def list_pros(
     db: Session = Depends(get_db),
     user: User | None = Depends(optional_user),
 ):
+    key = f"list:{q}:{category}:{city}:{min_rating}:{verified_only}:{language}:{sort}:{page.limit}:{page.offset}"
+    items = cache.cached("pros", key, settings.cache_ttl_seconds, lambda: _search_pros(
+        db, q, category, city, min_rating, verified_only, language, sort, page))
+    return _with_follow(db, user, items)
+
+
+def _search_pros(db, q, category, city, min_rating, verified_only, language, sort, page) -> list[ProOut]:
     stmt = (select(User).join(ProProfile).outerjoin(Category, ProProfile.category_id == Category.id)
             .where(User.is_active.is_(True)))
     if q:
@@ -83,22 +103,27 @@ def list_pros(
     users = db.scalars(stmt.order_by(*order).limit(page.limit).offset(page.offset)).all()
     if language:
         users = [u for u in users if language.upper() in (u.languages or [])]
-    return [pro_out(u, _follow(db, user, u.id)) for u in users]
+    return [pro_out(u) for u in users]
 
 
 @router.get("/pros/{pro_id}", response_model=ProOut)
 def get_pro(pro_id: str, db: Session = Depends(get_db), user: User | None = Depends(optional_user)):
-    u = _pro_or_404(db, pro_id)
-    return pro_out(u, _follow(db, user, u.id))
+    item = cache.cached("pros", f"one:{pro_id}", settings.cache_ttl_seconds,
+                        lambda: pro_out(_pro_or_404(db, pro_id)))
+    return _with_follow(db, user, [item])[0]
 
 
 @router.get("/pros/{pro_id}/services", response_model=list[ServiceOut])
 def pro_services(pro_id: str, db: Session = Depends(get_db), user: User | None = Depends(optional_user)):
     _pro_or_404(db, pro_id)
-    stmt = select(Service).where(Service.pro_id == pro_id)
-    if not user or user.id != pro_id:
-        stmt = stmt.where(Service.status == "active")
-    return [service_out(s) for s in db.scalars(stmt.order_by(Service.position, Service.created_at))]
+    owner = bool(user and user.id == pro_id)
+
+    def compute():
+        stmt = select(Service).where(Service.pro_id == pro_id)
+        if not owner:
+            stmt = stmt.where(Service.status == "active")
+        return [service_out(s) for s in db.scalars(stmt.order_by(Service.position, Service.created_at))]
+    return compute() if owner else cache.cached("services", f"pro:{pro_id}", settings.cache_ttl_seconds, compute)
 
 
 @router.get("/pros/{pro_id}/posts", response_model=list[PostOut])
@@ -151,6 +176,7 @@ def follow(pro_id: str, notify_bell: bool = Query(False, alias="notify"),
     else:
         f.notify = notify_bell
     db.commit()
+    cache.invalidate("pros")
     return pro_out(u, f)
 
 
@@ -162,6 +188,7 @@ def unfollow(pro_id: str, db: Session = Depends(get_db), user: User = Depends(cu
         db.delete(f)
         u.pro.followers_count = max(0, u.pro.followers_count - 1)
         db.commit()
+        cache.invalidate("pros")
     return pro_out(u, None)
 
 
@@ -186,6 +213,7 @@ def become_pro(payload: ProUpsert, db: Session = Depends(get_db), user: User = D
     db.refresh(user)
     _apply_pro(db, user, payload)
     db.commit()
+    cache.invalidate("pros")
     return pro_out(user)
 
 
@@ -193,6 +221,7 @@ def become_pro(payload: ProUpsert, db: Session = Depends(get_db), user: User = D
 def update_my_pro(payload: ProUpsert, db: Session = Depends(get_db), user: User = Depends(require_pro)):
     _apply_pro(db, user, payload)
     db.commit()
+    cache.invalidate("pros")
     return pro_out(user)
 
 
@@ -311,7 +340,7 @@ def my_stats(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db),
 
 @router.get("/plans", tags=["plans"])
 def plans(db: Session = Depends(get_db)):
-    return get_setting(db, "plans")
+    return cache.cached("settings", "plans", 3600, lambda: get_setting(db, "plans"))
 
 
 @router.post("/plans/subscribe", response_model=ProOut, tags=["plans"])
@@ -325,4 +354,5 @@ def subscribe(payload: SubscribeIn, db: Session = Depends(get_db), user: User = 
     user.pro.plan = payload.plan
     user.pro.plan_until = base + timedelta(days=30 * payload.months)
     db.commit()
+    cache.invalidate("pros")
     return pro_out(user)

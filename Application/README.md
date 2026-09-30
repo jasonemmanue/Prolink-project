@@ -40,6 +40,49 @@ flutter build apk --release        # APK release
 flutter install                    # installer sur le téléphone connecté
 ```
 
+## Connexion à l'API
+
+L'app parle à l'API FastAPI (`Api/`, `docker compose up -d`). Couche réseau :
+
+```
+lib/api/
+├── api_client.dart   # HTTP + JWT (refresh auto sur 401), URL du serveur mémorisée
+├── session.dart      # Session (Provider) : login/inscription/2FA, chargement des données
+└── mappers.dart      # JSON de l'API → modèles de l'app
+```
+
+- **URL du serveur** : fixée au build (`--dart-define=API_URL=...`), modifiable
+  dans l'app (écran de connexion → **Serveur**), puis mémorisée.
+  - Émulateur Android : `http://10.0.2.2:8000` (valeur par défaut)
+  - Téléphone : `http://<IP du PC sur le Wi-Fi>:8000` — autoriser le port 8000
+    dans le pare-feu Windows (réseau privé).
+- **Session** : le jeton est mémorisé ; au relancement l'app ouvre directement
+  le bon espace (internaute ou pro).
+- **Mode démo** : bouton sur l'écran de connexion (ou proposé si le serveur est
+  injoignable) — données embarquées de `data.dart`, rien n'est enregistré.
+- Comptes de démo : `client@prolink.cm` (2FA : le code est pré-rempli en dev),
+  `aicha@prolink.cm` (pro) — mot de passe `Demo1234!`.
+
+Build pour un téléphone sur le même Wi-Fi que le PC :
+
+```bash
+flutter build apk --release --dart-define=API_URL=http://192.168.1.33:8000
+```
+
+Branché sur l'API : inscription/connexion (+2FA), fil (likes, favoris,
+commentaires, signalements), suivi + cloche, recherche, commandes avec
+séquestre (paiement portefeuille ou Mobile Money sandbox), suivi/validation/
+annulation/litige/avis, devis (demande et réponse), portefeuille (solde,
+historique, recharge, retrait avec code SMS), messagerie (conversations,
+envoi, rafraîchissement 4 s, traduction serveur), groupes (adhésion, paiement,
+messages), lives (billet, accès vérifié, pourboires, démarrage/fin/replay côté
+pro), notifications, espace pro (tableau de bord, commandes, catalogue CRUD +
+ordre, publication, finances, KYC, sponsorisation, packs, avis).
+
+Pas encore branché : envoi de fichiers (photos/PDF → stockage objet à ajouter),
+vidéo LiveKit (le jeton est déjà délivré par l'API), push FCM, paiements
+CinetPay réels (sandbox sans clés).
+
 ## Compilation testée
 
 - Android 8+ (arm64/armeabi/x86_64)

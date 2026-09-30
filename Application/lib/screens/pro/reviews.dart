@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../api/session.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
 
@@ -29,7 +30,43 @@ class _ProReviewsScreenState extends State<ProReviewsScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    if (Session.instance.online) _load();
+  }
+
+  Future<void> _load() async {
+    final list = await apiCall<List>(
+      context,
+      (api) async => await api.get('/pros/${Session.instance.userId}/reviews',
+          query: {'limit': 100}) as List,
+    );
+    if (list == null || !mounted) return;
+    setState(() {
+      _reviews
+        ..clear()
+        ..addAll([
+          for (final r in list)
+            _Review(
+              r['author']['name'],
+              r['stars'],
+              r['text'] ?? '',
+              DateTime.now().difference(DateTime.parse(r['created_at'])).inDays,
+              reply: r['reply'],
+              id: r['id'],
+            ),
+        ]);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_reviews.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Avis clients')),
+        body: const Center(child: Text('Pas encore d\'avis : ils arrivent après vos premières commandes.')),
+      );
+    }
     final avg =
         _reviews.map((r) => r.stars).reduce((a, b) => a + b) / _reviews.length;
     return Scaffold(
@@ -178,7 +215,12 @@ class _ProReviewsScreenState extends State<ProReviewsScreen> {
         ],
       ),
     );
-    if (text != null && text.isNotEmpty) setState(() => r.reply = text);
+    if (text == null || text.isEmpty || !mounted) return;
+    final ok = await apiCall<bool>(context, (api) async {
+      await api.post('/reviews/${r.id}/reply', {'reply': text});
+      return true;
+    }, demo: true);
+    if (ok == true && mounted) setState(() => r.reply = text);
   }
 }
 
@@ -188,5 +230,6 @@ class _Review {
   final String text;
   final int days;
   String? reply;
-  _Review(this.author, this.stars, this.text, this.days, {this.reply});
+  final String id;
+  _Review(this.author, this.stars, this.text, this.days, {this.reply, this.id = ''});
 }

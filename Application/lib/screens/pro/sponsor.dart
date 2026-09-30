@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../api/session.dart';
 import '../../data.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
@@ -19,6 +20,40 @@ class _SponsorScreenState extends State<SponsorScreen> {
   final Set<String> _cities = {'Douala'};
 
   int get _total => (_budget * _days).round();
+
+  Future<void> _launch() async {
+    final s = Session.instance;
+    String? targetId;
+    if (s.online && _target != 'profile') {
+      targetId = _target == 'post'
+          ? MockData.feed().where((p) => p.author.id == s.userId).map((p) => p.id).firstOrNull
+          : MockData.servicesOf(s.mePro).map((x) => x.id).firstOrNull;
+      if (targetId == null) {
+        showInfo(context,
+            _target == 'post' ? 'Publiez d\'abord un post à sponsoriser' : 'Créez d\'abord une prestation');
+        return;
+      }
+    }
+    final ok = await apiCall<bool>(context, (api) async {
+      await api.post('/campaigns', {
+        'target_type': _target,
+        if (targetId != null) 'target_id': targetId,
+        'goal': _goal,
+        'cities': _cities.toList(),
+        'daily_budget_xaf': _budget.round(),
+        'days': _days.round(),
+      });
+      return true;
+    }, demo: true);
+    if (ok != true || !mounted) return;
+    await s.afterMoneyAction();
+    if (!mounted) return;
+    Navigator.pop(context);
+    showInfo(
+      context,
+      'Campagne soumise à validation (≈ 2 h). ${formatXaf(_total)} réservés.',
+    );
+  }
   int get _reach => (_total / 1000 * 420).round();
 
   @override
@@ -54,11 +89,7 @@ class _SponsorScreenState extends State<SponsorScreen> {
                       if (_step < 2) {
                         setState(() => _step++);
                       } else {
-                        Navigator.pop(context);
-                        showInfo(
-                          context,
-                          'Campagne soumise à validation (≈ 2 h). ${formatXaf(_total)} réservés.',
-                        );
+                        _launch();
                       }
                     },
                     child: Text(
@@ -216,9 +247,9 @@ class _SponsorScreenState extends State<SponsorScreen> {
     const SectionLabel('Aperçu dans le fil'),
     Card(
       child: ListTile(
-        leading: Avatar(url: MockData.pros[0].avatar),
+        leading: Avatar(url: Session.instance.mePro.avatar),
         title: Text(
-          MockData.pros[0].name,
+          Session.instance.mePro.name,
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         subtitle: const Text('Création de SARL — 3 formules, prix affichés.'),
@@ -303,7 +334,8 @@ class PlansScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: plans.map((p) {
-          final current = p.$1 == 'Gratuit';
+          final plan = Session.instance.online ? (Session.instance.me?['pro']?['plan'] ?? 'free') : 'free';
+          final current = {'free': 'Gratuit', 'premium': 'Premium', 'business': 'Business'}[plan] == p.$1;
           return Card(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
@@ -366,10 +398,15 @@ class PlansScreen extends StatelessWidget {
                             child: Text('Pack actuel'),
                           )
                         : ElevatedButton(
-                            onPressed: () => showInfo(
-                              context,
-                              'Souscription ${p.$1} : paiement Mobile Money…',
-                            ),
+                            onPressed: () async {
+                              final ok = await apiCall<bool>(context, (api) async {
+                                await api.post('/plans/subscribe',
+                                    {'plan': p.$1.toLowerCase(), 'months': 1});
+                                await Session.instance.refreshMe();
+                                return true;
+                              }, demo: true, success: 'Pack ${p.$1} activé ✔');
+                              if (ok == true) Session.instance.afterMoneyAction();
+                            },
                             child: Text('Passer ${p.$1}'),
                           ),
                   ),

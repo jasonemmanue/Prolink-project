@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../api/session.dart';
 import '../../data.dart';
 import '../../models.dart';
 import '../../theme.dart';
@@ -16,9 +17,30 @@ class _ServiceEditorScreenState extends State<ServiceEditorScreen> {
   late String _pricing = widget.service?.pricingType ?? 'fixed';
   late String _modality = widget.service?.modality ?? 'À distance';
   late String _cancel = widget.service?.cancellation ?? 'Standard';
-  String _status = 'active';
-  bool _variants = true;
-  final _deliverables = ['Compte rendu écrit', 'Suivi 30 jours'];
+  late String _status = widget.service?.status ?? 'active';
+  late bool _variants = widget.service == null || widget.service!.variants.isNotEmpty;
+  late final List<String> _deliverables = widget.service?.deliverables.isNotEmpty == true
+      ? List.of(widget.service!.deliverables)
+      : ['Compte rendu écrit', 'Suivi 30 jours'];
+  late String _category = MockData.categories.first;
+  bool _busy = false;
+
+  late final _title = TextEditingController(text: widget.service?.title);
+  late final _desc = TextEditingController(text: widget.service?.description);
+  late final _price = TextEditingController(
+      text: widget.service == null ? '' : '${widget.service!.priceXaf}');
+  late final _duration = TextEditingController(text: widget.service?.duration);
+  late final List<TextEditingController> _variantPrices = [
+    for (final name in const ['Basic', 'Standard', 'Premium'])
+      TextEditingController(
+        text: widget.service?.variants
+            .where((v) => v.name == name)
+            .map((v) => '${v.priceXaf}')
+            .firstOrNull,
+      ),
+  ];
+
+  int _int(TextEditingController c) => int.tryParse(c.text.replaceAll(' ', '')) ?? 0;
 
   static const _pricingTypes = [
     ('fixed', 'Prix fixe'),
@@ -36,7 +58,7 @@ class _ServiceEditorScreenState extends State<ServiceEditorScreen> {
         title: Text(s == null ? 'Nouvelle prestation' : 'Modifier'),
         actions: [
           TextButton(
-            onPressed: () => _save('Brouillon enregistré'),
+            onPressed: _busy ? null : () => _save('Brouillon enregistré', status: 'draft'),
             child: const Text('Brouillon'),
           ),
         ],
@@ -52,22 +74,22 @@ class _ServiceEditorScreenState extends State<ServiceEditorScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          TextFormField(
-            initialValue: s?.title,
+          TextField(
+            controller: _title,
             decoration: const InputDecoration(labelText: 'Titre'),
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
-            initialValue: MockData.categories.first,
+            initialValue: _category,
             decoration: const InputDecoration(labelText: 'Catégorie'),
             items: MockData.categories
                 .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                 .toList(),
-            onChanged: (_) {},
+            onChanged: (v) => _category = v ?? _category,
           ),
           const SizedBox(height: 12),
-          TextFormField(
-            initialValue: s?.description,
+          TextField(
+            controller: _desc,
             maxLines: 4,
             decoration: const InputDecoration(labelText: 'Description'),
           ),
@@ -86,8 +108,8 @@ class _ServiceEditorScreenState extends State<ServiceEditorScreen> {
           ),
           const SizedBox(height: 12),
           if (_pricing != 'quote')
-            TextFormField(
-              initialValue: s == null ? null : '${s.priceXaf}',
+            TextField(
+              controller: _price,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
                 labelText: 'Prix',
@@ -105,11 +127,12 @@ class _ServiceEditorScreenState extends State<ServiceEditorScreen> {
           if (_variants)
             Row(
               children: [
-                for (final v in ['Basic', 'Standard', 'Premium'])
+                for (final (i, v) in const ['Basic', 'Standard', 'Premium'].indexed)
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.only(right: 6),
                       child: TextField(
+                        controller: _variantPrices[i],
                         keyboardType: TextInputType.number,
                         decoration: InputDecoration(
                           labelText: v,
@@ -135,8 +158,7 @@ class _ServiceEditorScreenState extends State<ServiceEditorScreen> {
             ),
           ),
           TextButton.icon(
-            onPressed: () =>
-                setState(() => _deliverables.add('Livrable supplémentaire')),
+            onPressed: _addDeliverable,
             icon: const Icon(Icons.add),
             label: const Text('Ajouter un livrable'),
           ),
@@ -167,8 +189,8 @@ class _ServiceEditorScreenState extends State<ServiceEditorScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          TextFormField(
-            initialValue: s?.duration,
+          TextField(
+            controller: _duration,
             decoration: const InputDecoration(
               labelText: 'Durée / délai',
               hintText: 'ex. 2 semaines',
@@ -186,9 +208,11 @@ class _ServiceEditorScreenState extends State<ServiceEditorScreen> {
           ),
           const SizedBox(height: 24),
           ElevatedButton(
-            onPressed: () => _save(
-              s == null ? 'Prestation publiée' : 'Modifications enregistrées',
-            ),
+            onPressed: _busy
+                ? null
+                : () => _save(
+                      s == null ? 'Prestation publiée' : 'Modifications enregistrées',
+                    ),
             child: Text(s == null ? 'Publier la prestation' : 'Enregistrer'),
           ),
         ],
@@ -196,8 +220,59 @@ class _ServiceEditorScreenState extends State<ServiceEditorScreen> {
     );
   }
 
-  void _save(String msg) {
-    Navigator.pop(context);
+  Future<void> _addDeliverable() async {
+    final c = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nouveau livrable'),
+        content: TextField(controller: c, autofocus: true),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, c.text.trim()), child: const Text('Ajouter')),
+        ],
+      ),
+    );
+    if (text != null && text.isNotEmpty) setState(() => _deliverables.add(text));
+  }
+
+  Future<void> _save(String msg, {String? status}) async {
+    if (_title.text.trim().length < 3) {
+      showInfo(context, 'Le titre doit faire au moins 3 caractères');
+      return;
+    }
+    final base = _int(_price);
+    final body = {
+      'title': _title.text.trim(),
+      'description': _desc.text.trim(),
+      'category': _category,
+      'price_xaf': _pricing == 'quote' ? 0 : base,
+      'pricing_type': _pricing,
+      'variants': !_variants || _pricing == 'quote'
+          ? <Map<String, dynamic>>[]
+          : [
+              for (final (i, name) in const ['Basic', 'Standard', 'Premium'].indexed)
+                {'name': name, 'price_xaf': _int(_variantPrices[i]) == 0 ? base * (i + 1) : _int(_variantPrices[i])},
+            ],
+      'deliverables': _deliverables,
+      'duration': _duration.text.trim(),
+      'modality': _modality,
+      'cancellation': _cancel,
+      'status': status ?? _status,
+    };
+    setState(() => _busy = true);
+    final ok = await apiCall<bool>(context, (api) async {
+      widget.service == null || widget.service!.proId.isEmpty
+          ? await api.post('/services', body)
+          : await api.patch('/services/${widget.service!.id}', body);
+      await Session.instance.refreshMyServices();
+      return true;
+    }, demo: true);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (ok != true) return;
+    Navigator.pop(context, true);
     showInfo(context, msg);
   }
 

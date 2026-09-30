@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../api/session.dart';
 import '../../data.dart';
 import '../../l10n.dart';
 import '../../theme.dart';
@@ -16,34 +17,59 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final loc = context.watch<AppLocale>();
+    final session = context.watch<Session>();
+    final myOrders = MockData.orders()
+        .where((o) => !session.online || o.pro.id != session.userId)
+        .length;
+    final tickets = session.online
+        ? session.transactions.where((t) => t['kind'] == 'ticket').length
+        : 3;
     return SafeArea(
       child: ListView(
         children: [
           const SizedBox(height: 16),
           Center(
-            child: Avatar(url: MockData.meAvatar, size: 84),
+            child: Avatar(url: session.avatar, size: 84),
           ),
           const SizedBox(height: 8),
-          const Center(
+          Center(
             child: Text(
-              'Emmanuel Sakam',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              session.name,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
             ),
           ),
           Center(
             child: Text(
-              'Client · Douala',
+              [
+                session.isPro ? 'Professionnel' : 'Client',
+                if (session.city.isNotEmpty) session.city,
+                if (!session.online) 'mode démo',
+              ].join(' · '),
               style: TextStyle(color: AppColors.textSecondary),
             ),
           ),
           const SizedBox(height: 16),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(children: [
-              Expanded(child: _Stat(value: '11', label: 'Commandes')),
-              Expanded(child: _Stat(value: '24', label: 'Pros suivis')),
-              Expanded(child: _Stat(value: '7', label: 'Avis donnés')),
-              Expanded(child: _Stat(value: '3', label: 'Billets')),
+              Expanded(child: _Stat(value: '$myOrders', label: 'Commandes')),
+              Expanded(
+                child: _Stat(
+                  value: session.balanceXaf >= 1000000
+                      ? '${(session.balanceXaf / 1000000).toStringAsFixed(1).replaceAll('.', ',')} M'
+                      : session.balanceXaf >= 1000
+                      ? '${session.balanceXaf ~/ 1000} k'
+                      : '${session.balanceXaf}',
+                  label: 'Solde XAF',
+                ),
+              ),
+              Expanded(
+                child: _Stat(
+                  value: '${MockData.notifications().where((n) => !n.read).length}',
+                  label: 'Non lues',
+                ),
+              ),
+              Expanded(child: _Stat(value: '$tickets', label: 'Billets')),
             ]),
           ),
           const SizedBox(height: 12),
@@ -125,9 +151,14 @@ class ProfileScreen extends StatelessWidget {
                 foregroundColor: AppColors.danger,
                 side: const BorderSide(color: AppColors.danger),
               ),
-              onPressed: () => Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const AuthScreen()),
-              ),
+              onPressed: () async {
+                await Session.instance.logout();
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const AuthScreen()),
+                  (_) => false,
+                );
+              },
               icon: const Icon(Icons.logout),
               label: const Text('Se déconnecter'),
             ),

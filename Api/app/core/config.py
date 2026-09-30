@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     environment: str = "dev"
 
     database_url: str = "postgresql+psycopg2://prolink:prolink@localhost:5432/prolink"
+    # Cache + limitation de débit. Vide = sans cache.
+    redis_url: str = "redis://localhost:6379/0"
+    cache_ttl_seconds: int = 60
 
     jwt_secret: str = "change-me-in-prod"
     jwt_algorithm: str = "HS256"

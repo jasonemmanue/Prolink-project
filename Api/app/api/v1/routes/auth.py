@@ -14,7 +14,7 @@ from app.schemas import (
     LoginIn, MeOut, MeUpdate, OtpSendIn, OtpVerifyIn, PasswordChange, RefreshIn, RegisterIn,
     TokenOut, me_out,
 )
-from app.services import otp
+from app.services import cache, otp
 from app.services.ledger import wallet_of
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -97,6 +97,8 @@ def otp_send(payload: OtpSendIn, db: Session = Depends(get_db),
         target = user.id
     else:
         target = payload.target.strip()
+    if not cache.rate_limit(f"otp:{target}", 5, 600):
+        raise HTTPException(429, "Trop de demandes de code : réessayez dans quelques minutes")
     code = otp.issue(db, target, payload.purpose)
     db.commit()
     out = {"sent": True, "channel": "sms", "expires_in_minutes": settings.otp_ttl_minutes}

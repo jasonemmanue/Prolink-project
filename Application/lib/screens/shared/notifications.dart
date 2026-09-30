@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../api/session.dart';
 import '../../data.dart';
 import '../../models.dart';
 import '../../theme.dart';
@@ -14,6 +15,41 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen> {
   late List<AppNotification> _items = MockData.notifications();
   String _filter = 'all';
+
+  @override
+  void initState() {
+    super.initState();
+    final s = Session.instance;
+    if (s.online) {
+      s.refreshNotifications().then((_) {
+        if (mounted) setState(() => _items = MockData.notifications());
+      }).catchError((_) {});
+    }
+  }
+
+  Future<void> _readAll() async {
+    final ok = await apiCall<bool>(context, (api) async {
+      await api.post('/notifications/read-all');
+      return true;
+    }, demo: true);
+    if (ok != true || !mounted) return;
+    setState(() => _items = [
+          for (final n in _items)
+            AppNotification(
+              id: n.id,
+              kind: n.kind,
+              title: n.title,
+              body: n.body,
+              at: n.at,
+              read: true,
+            ),
+        ]);
+    final s = Session.instance;
+    if (s.online) {
+      MockData.liveNotifications = _items;
+      s.refreshNotifications().catchError((_) {});
+    }
+  }
 
   static const _filters = [
     ('all', 'Toutes'),
@@ -35,19 +71,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         actions: [
           if (unread > 0)
             TextButton(
-              onPressed: () => setState(
-                () => _items = [
-                  for (final n in _items)
-                    AppNotification(
-                      id: n.id,
-                      kind: n.kind,
-                      title: n.title,
-                      body: n.body,
-                      at: n.at,
-                      read: true,
-                    ),
-                ],
-              ),
+              onPressed: _readAll,
               child: const Text('Tout lire'),
             ),
           IconButton(

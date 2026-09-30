@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../api/mappers.dart';
+import '../../api/session.dart';
 import '../../data.dart';
 import '../../models.dart';
 import '../../theme.dart';
@@ -12,6 +14,7 @@ class ProGroup {
   final int members;
   final int priceXaf;
   final String description;
+  final String? myStatus; // member | requested | null
   const ProGroup({
     required this.id,
     required this.name,
@@ -20,7 +23,19 @@ class ProGroup {
     required this.members,
     required this.description,
     this.priceXaf = 0,
+    this.myStatus,
   });
+
+  factory ProGroup.fromJson(Map<String, dynamic> j) => ProGroup(
+    id: j['id'],
+    name: j['title'] ?? '',
+    host: Mappers.user(j['host']),
+    kind: j['access'] ?? 'public',
+    members: j['members_count'] ?? 0,
+    priceXaf: j['price_xaf'] ?? 0,
+    description: j['description'] ?? '',
+    myStatus: j['my_status'],
+  );
 }
 
 List<ProGroup> demoGroups() => [
@@ -60,47 +75,87 @@ String groupKindLabel(String k) => switch (k) {
 };
 
 /// Liste des groupes (onglet Messagerie > Groupes et Découvrir > Groupes).
-class GroupList extends StatelessWidget {
+class GroupList extends StatefulWidget {
   const GroupList({super.key});
   @override
+  State<GroupList> createState() => _GroupListState();
+}
+
+class _GroupListState extends State<GroupList> {
+  List<ProGroup> _groups = demoGroups();
+
+  @override
+  void initState() {
+    super.initState();
+    if (Session.instance.online) _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final list = await Session.instance.api.get('/chat/groups') as List;
+      if (!mounted) return;
+      setState(() => _groups = [for (final j in list) ProGroup.fromJson(j)]);
+    } catch (_) {}
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final groups = demoGroups();
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: groups.length,
-      separatorBuilder: (_, __) => const Divider(height: 1, indent: 76),
-      itemBuilder: (_, i) {
-        final g = groups[i];
-        return ListTile(
-          leading: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: AppColors.secondary.withOpacity(0.12),
-                child: const Icon(Icons.groups, color: AppColors.secondary),
-              ),
-              Positioned(
-                right: -4,
-                bottom: -4,
-                child: Avatar(url: g.host.avatar, size: 22),
-              ),
-            ],
-          ),
-          title: Text(
-            g.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
-          subtitle: Text('${g.members} membres · ${g.host.name}'),
-          trailing: Pill(
-            label: groupKindLabel(g.kind),
-            color: g.kind == 'paid' ? AppColors.accent : AppColors.primary,
-          ),
-          onTap: () => pushScreen(context, GroupScreen(group: g)),
-        );
+    final groups = _groups;
+    if (groups.isEmpty) {
+      return Center(
+        child: Text('Aucun groupe pour le moment',
+            style: TextStyle(color: AppColors.textSecondary)),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: () async {
+        if (Session.instance.online) await _load();
       },
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemCount: groups.length,
+        separatorBuilder: (_, __) => const Divider(height: 1, indent: 76),
+        itemBuilder: (_, i) {
+          final g = groups[i];
+          return ListTile(
+            leading: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: AppColors.secondary.withOpacity(0.12),
+                  child: const Icon(Icons.groups, color: AppColors.secondary),
+                ),
+                Positioned(
+                  right: -4,
+                  bottom: -4,
+                  child: Avatar(url: g.host.avatar, size: 22),
+                ),
+              ],
+            ),
+            title: Text(
+              g.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: Text('${g.members} membres · ${g.host.name}'),
+            trailing: Pill(
+              label: g.myStatus == 'member' ? 'Membre' : groupKindLabel(g.kind),
+              color: g.myStatus == 'member'
+                  ? AppColors.success
+                  : g.kind == 'paid'
+                  ? AppColors.accent
+                  : AppColors.primary,
+            ),
+            onTap: () async {
+              await pushScreen(context, GroupScreen(group: g));
+              if (Session.instance.online) _load();
+            },
+          );
+        },
+      ),
     );
   }
 }
@@ -114,21 +169,107 @@ class GroupScreen extends StatefulWidget {
 }
 
 class _GroupScreenState extends State<GroupScreen> {
-  late bool _joined = widget.group.kind == 'public';
+  late bool _joined = Session.instance.online
+      ? widget.group.myStatus == 'member'
+      : widget.group.kind == 'public';
+  late bool _requested = widget.group.myStatus == 'requested';
+  final _c = TextEditingController();
+  List<(String, String, bool)>? _remote;
+
+  @override
+  void initState() {
+    super.initState();
+    if (Session.instance.online && _joined) _loadMessages();
+  }
+
+  Future<void> _loadMessages() async {
+    try {
+      final list = await Session.instance.api.get(
+          '/chat/conversations/${widget.group.id}/messages',
+          query: {'limit': 100}) as List;
+      if (!mounted) return;
+      final host = widget.group.host;
+      final me = Session.instance.userId;
+      setState(() => _remote = [
+            for (final m in list)
+              (
+                m['author_id'] == host.id
+                    ? host.name
+                    : m['author_id'] == me
+                    ? 'Vous'
+                    : 'Membre',
+                m['text'] as String,
+                m['author_id'] == host.id,
+              ),
+          ]);
+    } catch (_) {}
+  }
+
+  Future<void> _join() async {
+    final g = widget.group;
+    final r = await apiCall<Map>(
+      context,
+      (api) async => await api.post('/chat/groups/${g.id}/join') as Map,
+      demo: const {'my_status': 'member'},
+    );
+    if (r == null || !mounted) return;
+    final status = r['my_status'];
+    setState(() {
+      _joined = status == 'member';
+      _requested = status == 'requested';
+    });
+    showInfo(
+      context,
+      _requested
+          ? 'Demande envoyée à l\'animateur'
+          : g.kind == 'paid'
+          ? 'Abonnement activé : ${formatXaf(g.priceXaf)}/mois'
+          : 'Bienvenue dans le groupe !',
+    );
+    if (_joined && Session.instance.online) {
+      _loadMessages();
+      Session.instance.afterMoneyAction();
+    }
+  }
+
+  Future<void> _send() async {
+    final text = _c.text.trim();
+    if (text.isEmpty) return;
+    final ok = await apiCall<bool>(context, (api) async {
+      await api.post('/chat/conversations/${widget.group.id}/messages', {'text': text});
+      return true;
+    }, demo: true);
+    if (ok != true || !mounted) return;
+    _c.clear();
+    if (Session.instance.online) {
+      _loadMessages();
+    } else {
+      setState(() => (_remote ??= []).add(('Vous', text, false)));
+    }
+  }
+
+  Future<void> _leave() async {
+    final ok = await apiCall<bool>(context, (api) async {
+      await api.post('/chat/groups/${widget.group.id}/leave');
+      return true;
+    }, demo: true);
+    if (ok == true && mounted) setState(() => _joined = false);
+  }
 
   @override
   Widget build(BuildContext context) {
     final g = widget.group;
-    final msgs = [
-      (
-        g.host.name,
-        'Bienvenue à tous ! Épinglé : règles du groupe et planning.',
-        true,
-      ),
-      ('Grace F.', 'Merci pour la session de mardi, très claire 🙏', false),
-      ('Paul N.', 'Est-ce que le replay sera disponible ?', false),
-      (g.host.name, 'Oui, dans l\'onglet Lives de mon profil.', true),
-    ];
+    final msgs = _remote ??
+        [
+          (
+            g.host.name,
+            'Bienvenue à tous ! Épinglé : règles du groupe et planning.',
+            true,
+          ),
+          ('Grace F.', 'Merci pour la session de mardi, très claire 🙏', false),
+          ('Paul N.', 'Est-ce que le replay sera disponible ?', false),
+          (g.host.name, 'Oui, dans l\'onglet Lives de mon profil.', true),
+        ];
     return Scaffold(
       appBar: AppBar(
         title: Column(
@@ -149,16 +290,14 @@ class _GroupScreenState extends State<GroupScreen> {
         actions: [
           PopupMenuButton<String>(
             onSelected: (v) {
-              if (v == 'report') showReportSheet(context, 'ce groupe');
-              if (v == 'leave') setState(() => _joined = false);
+              if (v == 'report') {
+                showReportSheet(context, 'ce groupe', type: 'group', id: g.id);
+              }
+              if (v == 'leave') _leave();
             },
             itemBuilder: (_) => [
-              const PopupMenuItem(
-                value: 'mute',
-                child: Text('Mettre en sourdine'),
-              ),
-              if (_joined)
-                const PopupMenuItem(value: 'leave', child: Text('Quitter')),
+              const PopupMenuItem(value: 'mute', child: Text('Mettre en sourdine')),
+              if (_joined) const PopupMenuItem(value: 'leave', child: Text('Quitter')),
               const PopupMenuItem(value: 'report', child: Text('Signaler')),
             ],
           ),
@@ -182,55 +321,51 @@ class _GroupScreenState extends State<GroupScreen> {
             child: _joined
                 ? ListView(
                     padding: const EdgeInsets.all(12),
-                    children: msgs
-                        .map(
-                          (m) => Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      m.$1,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: m.$3
-                                            ? AppColors.primary
-                                            : AppColors.textSecondary,
-                                      ),
+                    children: [
+                      for (final m in msgs)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    m.$1,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: m.$3
+                                          ? AppColors.primary
+                                          : AppColors.textSecondary,
                                     ),
-                                    if (m.$3) ...[
-                                      const SizedBox(width: 4),
-                                      const Pill(
-                                        label: 'Animateur',
-                                        color: AppColors.secondary,
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: m.$3
-                                        ? AppColors.primary.withOpacity(0.06)
-                                        : AppColors.surface,
-                                    borderRadius: BorderRadius.circular(12),
                                   ),
-                                  child: Text(m.$2),
+                                  if (m.$3) ...[
+                                    const SizedBox(width: 4),
+                                    const Pill(
+                                      label: 'Animateur',
+                                      color: AppColors.secondary,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: m.$3
+                                      ? AppColors.primary.withOpacity(0.06)
+                                      : AppColors.surface,
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                              ],
-                            ),
+                                child: Text(m.$2),
+                              ),
+                            ],
                           ),
-                        )
-                        .toList(),
+                        ),
+                    ],
                   )
-                : _JoinPanel(
-                    group: g,
-                    onJoin: () => setState(() => _joined = true),
-                  ),
+                : _JoinPanel(group: g, requested: _requested, onJoin: _join),
           ),
           if (_joined)
             SafeArea(
@@ -242,15 +377,16 @@ class _GroupScreenState extends State<GroupScreen> {
                       onPressed: () => showAttachmentSheet(context),
                       icon: const Icon(Icons.attach_file),
                     ),
-                    const Expanded(
+                    Expanded(
                       child: TextField(
-                        decoration: InputDecoration(
+                        controller: _c,
+                        decoration: const InputDecoration(
                           hintText: 'Écrire au groupe…',
                         ),
                       ),
                     ),
                     IconButton(
-                      onPressed: () {},
+                      onPressed: _send,
                       icon: const Icon(Icons.send, color: AppColors.primary),
                     ),
                   ],
@@ -265,11 +401,13 @@ class _GroupScreenState extends State<GroupScreen> {
 
 class _JoinPanel extends StatelessWidget {
   final ProGroup group;
+  final bool requested;
   final VoidCallback onJoin;
-  const _JoinPanel({required this.group, required this.onJoin});
+  const _JoinPanel({required this.group, required this.onJoin, this.requested = false});
   @override
   Widget build(BuildContext context) {
     final paid = group.kind == 'paid';
+    final private = group.kind == 'private';
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -283,29 +421,28 @@ class _JoinPanel extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              paid
+              requested
+                  ? 'Demande envoyée : en attente de validation par l\'animateur'
+                  : paid
                   ? 'Groupe réservé aux membres abonnés'
-                  : 'Ce groupe est privé : envoyez une demande à l\'animateur',
+                  : private
+                  ? 'Ce groupe est privé : envoyez une demande à l\'animateur'
+                  : 'Rejoignez le groupe pour lire et écrire',
               textAlign: TextAlign.center,
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                onJoin();
-                showInfo(
-                  context,
+            if (!requested)
+              ElevatedButton(
+                onPressed: onJoin,
+                child: Text(
                   paid
-                      ? 'Abonnement activé : ${formatXaf(group.priceXaf)}/mois'
-                      : 'Demande envoyée',
-                );
-              },
-              child: Text(
-                paid
-                    ? 'Rejoindre · ${formatXaf(group.priceXaf)}/mois'
-                    : 'Demander à rejoindre',
+                      ? 'Rejoindre · ${formatXaf(group.priceXaf)}/mois'
+                      : private
+                      ? 'Demander à rejoindre'
+                      : 'Rejoindre',
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -323,6 +460,29 @@ class CreateGroupScreen extends StatefulWidget {
 class _CreateGroupScreenState extends State<CreateGroupScreen> {
   String _kind = 'public';
   bool _onlyHostPosts = false;
+  final _title = TextEditingController();
+  final _desc = TextEditingController();
+  final _price = TextEditingController();
+
+  Future<void> _create() async {
+    if (_title.text.trim().length < 3) {
+      showInfo(context, 'Donnez un nom au groupe (3 caractères minimum)');
+      return;
+    }
+    final ok = await apiCall<bool>(context, (api) async {
+      await api.post('/chat/groups', {
+        'title': _title.text.trim(),
+        'description': _desc.text.trim(),
+        'access': _kind,
+        'price_xaf': int.tryParse(_price.text.replaceAll(' ', '')) ?? 0,
+        'only_host_posts': _onlyHostPosts,
+      });
+      return true;
+    }, demo: true);
+    if (ok != true || !mounted) return;
+    Navigator.pop(context);
+    showInfo(context, 'Groupe créé. Invitez vos abonnés !');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -335,48 +495,36 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
             child: CircleAvatar(
               radius: 40,
               backgroundColor: AppColors.secondary.withOpacity(0.12),
-              child: const Icon(
-                Icons.add_a_photo_outlined,
-                color: AppColors.secondary,
-              ),
+              child: const Icon(Icons.add_a_photo_outlined, color: AppColors.secondary),
             ),
           ),
           const SizedBox(height: 16),
-          const TextField(
-            decoration: InputDecoration(labelText: 'Nom du groupe'),
+          TextField(
+            controller: _title,
+            decoration: const InputDecoration(labelText: 'Nom du groupe'),
           ),
           const SizedBox(height: 12),
-          const TextField(
+          TextField(
+            controller: _desc,
             maxLines: 3,
-            decoration: InputDecoration(labelText: 'Description'),
+            decoration: const InputDecoration(labelText: 'Description'),
           ),
           const SectionLabel('Type d\'accès'),
           SegmentedButton<String>(
             segments: const [
-              ButtonSegment(
-                value: 'public',
-                label: Text('Public'),
-                icon: Icon(Icons.public),
-              ),
-              ButtonSegment(
-                value: 'private',
-                label: Text('Privé'),
-                icon: Icon(Icons.lock_outline),
-              ),
-              ButtonSegment(
-                value: 'paid',
-                label: Text('Payant'),
-                icon: Icon(Icons.payments_outlined),
-              ),
+              ButtonSegment(value: 'public', label: Text('Public'), icon: Icon(Icons.public)),
+              ButtonSegment(value: 'private', label: Text('Privé'), icon: Icon(Icons.lock_outline)),
+              ButtonSegment(value: 'paid', label: Text('Payant'), icon: Icon(Icons.payments_outlined)),
             ],
             selected: {_kind},
             onSelectionChanged: (s) => setState(() => _kind = s.first),
           ),
           if (_kind == 'paid') ...[
             const SizedBox(height: 12),
-            const TextField(
+            TextField(
+              controller: _price,
               keyboardType: TextInputType.number,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Abonnement mensuel (XAF)',
                 helperText: 'Commission plateforme : 10 %',
               ),
@@ -391,13 +539,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
             onChanged: (v) => setState(() => _onlyHostPosts = v),
           ),
           const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              showInfo(context, 'Groupe créé. Invitez vos abonnés !');
-            },
-            child: const Text('Créer le groupe'),
-          ),
+          ElevatedButton(onPressed: _create, child: const Text('Créer le groupe')),
         ],
       ),
     );
