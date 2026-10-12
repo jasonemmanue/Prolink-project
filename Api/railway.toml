@@ -1,0 +1,12 @@
+# Config-as-code Railway — service « api » (FastAPI).
+# Lue automatiquement par `railway up Api --path-as-root --service api`.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Les migrations Alembic + le seed tournent dans docker/entrypoint.sh au démarrage.
+healthcheckPath = "/health"
+healthcheckTimeout = 180
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

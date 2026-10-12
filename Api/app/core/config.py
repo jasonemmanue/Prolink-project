@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,6 +46,15 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000", "*"]
 
     seed_demo: bool = True
+
+    @field_validator("database_url")
+    @classmethod
+    def _psycopg2_driver(cls, v: str) -> str:
+        """Railway/Heroku fournissent `postgres://` ou `postgresql://` : on force psycopg2."""
+        for prefix in ("postgres://", "postgresql://"):
+            if v.startswith(prefix):
+                return "postgresql+psycopg2://" + v[len(prefix):]
+        return v
 
     @property
     def payments_sandbox(self) -> bool:
